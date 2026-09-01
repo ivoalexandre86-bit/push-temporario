@@ -1,0 +1,66 @@
+# Render Blueprint for "Sistema de Gestao de Projetos e Plano de Acao".
+#
+# Creates:
+#  - A managed PostgreSQL database (shared by this web service AND the
+#    local desktop shortcut "Iniciar Sistema.bat" - both must point at the
+#    SAME DATABASE_URL, never two separate databases).
+#  - A single Node.js web service that builds the React frontend and serves
+#    it from the same Express server as the API (see backend/src/app.js),
+#    so there is only one URL/origin for the whole application.
+#
+# IMPORTANT - read before deploying:
+#   Render's Postgres "Free" plan is automatically DELETED 30 days after
+#   creation unless upgraded to a paid plan. Since the whole point of this
+#   migration was to stop risking data loss, the database below defaults to
+#   the paid "starter" plan. If you want to try the free plan first, change
+#   `plan: starter` to `plan: free` under the database section - just know
+#   you will need to upgrade (or migrate again) before day 30 to keep your
+#   data.
+#
+# How to deploy:
+#   1. Push this repository to GitHub (see README.md).
+#   2. In the Render dashboard: New > Blueprint > select this repository.
+#   3. Render reads this file and creates both resources automatically.
+#   4. After the database is created, copy its "External Database URL"
+#      (Dashboard > the Postgres resource > Connect) into the .env file
+#      used by "Iniciar Sistema.bat" on your notebook, so both share the
+#      same data. The web service gets DATABASE_URL automatically below.
+#   5. Run the one-time data migration (see backend/scripts/
+#      migrate-sqlite-to-postgres.js) to bring in the 401+ existing
+#      actions from the old local database.
+
+databases:
+  - name: projetos-db
+    plan: starter
+    region: oregon
+    postgresMajorVersion: "16"
+
+services:
+  - type: web
+    name: projetos-web
+    runtime: node
+    plan: free
+    region: oregon
+    branch: main
+    buildCommand: "cd frontend && npm install && npm run build && cd ../backend && npm install"
+    startCommand: "cd backend && npm run migrate && npm start"
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: projetos-db
+          property: connectionString
+      - key: PGSSLMODE
+        value: require
+      - key: JWT_SECRET
+        generateValue: true
+      - key: ACCESS_TOKEN_TTL
+        value: 30m
+      - key: SEED_DEMO_PASSWORD
+        generateValue: true
+      # CORS_ORIGIN is intentionally left unset: the frontend is served from
+      # this same Express server/origin (see backend/src/app.js), so the
+      # browser never makes a cross-origin request that needs it. Only set
+      # it if you later split the frontend into its own separate service.
+    healthCheckPath: /api/health
