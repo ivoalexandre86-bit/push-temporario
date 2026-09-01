@@ -21,24 +21,27 @@ dados fictícios de negócio.
 7. [Regras de negócio implementadas](#regras-de-negócio-implementadas)
 8. [Testes automatizados](#testes-automatizados)
 9. [Deploy em produção](#deploy-em-produção)
-10. [Limitações conhecidas e próximos passos](#limitações-conhecidas-e-próximos-passos)
+10. [Segurança antes de publicar](#segurança-antes-de-publicar)
+11. [Limitações conhecidas e próximos passos](#limitações-conhecidas-e-próximos-passos)
 
 ## Arquitetura e stack
 
 ```
 projeto-app/
-├── backend/     API REST (Node.js + Express + SQLite/better-sqlite3)
+├── backend/     API REST (Node.js + Express + PostgreSQL/pg)
 └── frontend/    SPA (React + Vite + Tailwind CSS + Recharts)
 ```
 
 **Backend**
 - Node.js + Express, API REST em `/api/*`.
-- Banco relacional SQLite (via `better-sqlite3`) com migrations SQL versionadas
-  (`backend/src/db/migrations`), chaves estrangeiras, índices e constraints
-  `UNIQUE`/`CHECK`. O schema foi escrito em SQL padrão pensando em portar para
-  PostgreSQL com poucas mudanças (tipos `TEXT` para datas ISO, `AUTOINCREMENT`
-  → `SERIAL`, etc.) caso o volume de usuários/dados cresça além do que SQLite
-  atende confortavelmente.
+- Banco relacional **PostgreSQL** (via `pg`, driver assíncrono), com um shim
+  fino em `backend/src/db/connection.js` que mantém a mesma ergonomia de
+  chamada (`db.get/all/run/exec`, placeholders posicionais `?`) usada em todo
+  o código. Migrations SQL versionadas (`backend/src/db/migrations`), chaves
+  estrangeiras, índices e constraints `UNIQUE`/`CHECK`.
+- **Banco único e compartilhado**: o mesmo Postgres é usado tanto pelo site
+  publicado (Render) quanto pelo atalho local `Iniciar Sistema.bat` — os dois
+  sempre enxergam os mesmos dados, não existem duas cópias do banco.
 - Autenticação por sessão via cookie `httpOnly` + JWT (expiração de 30 min,
   configurável), com fallback Bearer token para clientes de API.
 - RBAC (controle de acesso por papel) com escopo adicional por projeto/área,
@@ -63,13 +66,16 @@ projeto-app/
 
 ## Como rodar localmente
 
-Pré-requisitos: Node.js 20+ e npm.
+Pré-requisitos: Node.js 20+, npm, e acesso a um banco PostgreSQL (o mesmo
+banco compartilhado do Render — recomendado — ou um Postgres local próprio
+para desenvolvimento isolado).
 
 ### 1. Backend (API + banco de dados)
 
 ```bash
 cd backend
 cp .env.example .env
+# Edite .env e cole a DATABASE_URL do Postgres (ver "Deploy em produção")
 npm install
 npm run setup      # roda migrations + seed de usuários/papéis + importação da planilha
 npm run dev         # inicia a API em http://localhost:4000
@@ -82,7 +88,12 @@ npm run dev         # inicia a API em http://localhost:4000
   planilha original) para o banco, preservando IDs e sinalizando exceções de
   qualidade de dados.
 
-Para recomeçar do zero: `node scripts/reset-db.js && npm run setup`.
+⚠️ Se `DATABASE_URL` já apontar para o banco compartilhado de produção (o
+mesmo usado por `Iniciar Sistema.bat` e pelo site), **não rode `npm run
+setup`/`import:xlsx` nesse banco** — ele já tem os dados reais. `npm run
+setup` é para preparar um banco novo/vazio (ex.: um Postgres local só para
+desenvolvimento). Para recomeçar um banco de testes do zero:
+`CONFIRM_RESET=SIM node scripts/reset-db.js --force && npm run setup`.
 
 ### 2. Frontend (SPA)
 
@@ -238,8 +249,11 @@ cd backend
 npm test
 ```
 
-47 testes (Vitest + Supertest), cada arquivo roda em processo isolado com seu
-próprio banco SQLite temporário:
+47 testes (Vitest + Supertest), cada arquivo roda em processo isolado
+(`pool: 'forks'`) contra sua própria instância efêmera do
+[`@electric-sql/pglite`](https://pglite.dev/) — um Postgres compilado para
+WASM, sem precisar instalar/rodar um servidor Postgres real — exercitando o
+mesmo dialeto SQL usado em produção:
 
 - `permissions.test.js` — autenticação, escopo por projeto (inclusive teste
   de IDOR — acesso a outro projeto via ID direto), permissões por papel,
@@ -262,24 +276,129 @@ próprio banco SQLite temporário:
 
 ## Deploy em produção
 
-Este projeto foi construído para rodar facilmente em qualquer ambiente Node.js
-(Render, Railway, Fly.io, VM própria, etc.):
+O sistema roda como um único serviço web Node.js (a mesma API Express serve
+tanto `/api/*` quanto o SPA React já compilado) e usa PostgreSQL como banco
+de dados — o mesmo banco é compartilhado entre o site publicado e o atalho
+local `Iniciar Sistema.bat`, para nunca haver duas cópias divergentes dos
+dados.
+
+### Publicando no Render (recomendado — `render.yaml` já configurado)
+
+1. Suba este repositório para o GitHub (`git push`, veja abaixo).
+2. No painel do Render: **New > Blueprint**, selecione o repositório. O
+   Render lê `render.yaml` na raiz e cria automaticamente:
+   - um banco **PostgreSQL gerenciado** (`projetos-db`);
+   - um **Web Service** Node.js (`projetos-web`) que builda o frontend,
+     instala o backend, roda as migrations a cada deploy (`npm run migrate`)
+     e inicia o servidor — já recebendo `DATABASE_URL` automaticamente do
+     banco criado.
+3. ⚠️ **Leia o comentário no topo do `render.yaml`** sobre o plano do banco:
+   o plano **Free** do Postgres no Render é **apagado automaticamente após
+   30 dias** a menos que seja promovido para um plano pago — o `render.yaml`
+   já vem configurado com o plano pago (`starter`) para evitar esse risco,
+   já que evitar perda de dados foi justamente o motivo de migrar para
+   Postgres. Ajuste o plano no arquivo (ou diretamente no painel do Render)
+   conforme seu orçamento.
+4. Depois que o banco for criado, copie a **External Database URL**
+   (Dashboard do Render > o recurso Postgres > **Connect**) — você vai
+   precisar dela no passo de migração dos dados abaixo e no `.env` usado
+   por `Iniciar Sistema.bat`.
+
+### Trazendo os dados que já existem localmente (401+ ações reais)
+
+Depois que o banco Postgres novo estiver com o schema criado (a primeira
+subida do Web Service já roda `npm run migrate`), rode **uma única vez** o
+script de migração de dados, apontando para o Postgres do Render:
+
+```bash
+cd backend
+npm install --no-save better-sqlite3   # só para este script, lê o SQLite antigo
+DATABASE_URL="<External Database URL do Render>" PGSSLMODE=require \
+  npm run migrate:data -- "C:\Users\ivoal\AppData\Local\SistemaGestaoProjetos\backend\data\projetos.db"
+```
+
+O script (`backend/scripts/migrate-sqlite-to-postgres.js`) copia todas as
+tabelas preservando IDs/UUIDs exatamente como estão, é seguro rodar mais de
+uma vez (`ON CONFLICT ... DO NOTHING` — nada é sobrescrito) e roda tudo
+dentro de uma única transação. **Não rode `npm run seed` depois dele** — os
+usuários reais (com as senhas reais) já vêm junto na migração; rodar o seed
+depois é inofensivo (ele também usa `ON CONFLICT DO NOTHING`), só
+desnecessário.
+
+### Conectando o notebook (`Iniciar Sistema.bat`) ao mesmo banco
+
+Na primeira execução após esta atualização, o atalho copia
+`backend/.env.example` para `.env` e para, pedindo para você colar a
+**mesma** `DATABASE_URL` do Render nesse arquivo. A partir daí, o notebook e
+o site sempre leem/gravam no mesmo banco — uma ação criada em um aparece
+imediatamente no outro.
+
+### Rodando em outro provedor (Railway, Fly.io, VM própria, etc.)
+
+Os mesmos passos gerais se aplicam sem depender do Render:
 
 1. `cd frontend && npm run build` — gera `frontend/dist`.
-2. `cd backend && npm install --omit=dev && npm run setup` — instala
-   dependências de produção e prepara o banco.
-3. Defina variáveis de ambiente de produção (ver `backend/.env.example`):
-   `JWT_SECRET` (obrigatório, gerar um valor aleatório longo), `NODE_ENV=production`.
+2. `cd backend && npm install --omit=dev && npm run migrate` — instala
+   dependências de produção e aplica as migrations no Postgres apontado por
+   `DATABASE_URL`.
+3. Defina as variáveis de ambiente de produção (ver `backend/.env.example`):
+   `DATABASE_URL` (obrigatório), `JWT_SECRET` (obrigatório, gerar um valor
+   aleatório longo), `NODE_ENV=production`, `PGSSLMODE=require` (a maioria
+   dos provedores gerenciados exige SSL).
 4. `npm start` — a API sobe e, como `frontend/dist` existe, também serve o
    SPA na mesma origem (ver `SERVE_FRONTEND` em `backend/src/app.js`).
-5. Coloque atrás de HTTPS (ex.: reverse proxy Nginx/Caddy ou o balanceador do
-   provedor) — os cookies de sessão são marcados `Secure` automaticamente
-   quando `NODE_ENV=production`.
+5. Coloque atrás de HTTPS — os cookies de sessão são marcados `Secure`
+   automaticamente quando `NODE_ENV=production`.
 
-Para uma carga maior de usuários/dados, o schema SQL foi escrito para ser
-facilmente portado para PostgreSQL (trocar `better-sqlite3` por `pg`, ajustar
-`AUTOINCREMENT`→`SERIAL`/`IDENTITY` e `strftime(...)`→`now()`); nenhuma regra
-de negócio depende de particularidades do SQLite.
+### Limitação conhecida: anexos de arquivo
+
+Uploads de anexo (`backend/src/routes/actions.js`, rota
+`/attachments`) ainda gravam no **disco local** do servidor
+(`backend/data/uploads`), não no Postgres. Isso é independente da migração
+do banco: o disco de um Web Service do Render é **efêmero** — qualquer
+arquivo enviado é perdido no próximo deploy/restart, a menos que um disco
+persistente pago seja anexado ao serviço, ou os anexos sejam migrados para
+um armazenamento de objetos (S3, Cloudflare R2, etc.). Nenhum anexo existe
+nos dados reais até o momento desta migração, então isso não afeta os dados
+já migrados — mas vale resolver antes de o time começar a anexar arquivos
+pelo site.
+
+## Segurança antes de publicar
+
+Checklist a percorrer antes de divulgar a URL do site para o time (algumas
+dessas etapas já vêm resolvidas pelo `render.yaml`, marcadas abaixo):
+
+- [x] **`JWT_SECRET`**: o `render.yaml` gera um valor aleatório automaticamente
+      (`generateValue: true`) — não reaproveita o valor de desenvolvimento.
+      Se você definir manualmente em outro provedor, gere algo longo e
+      aleatório (`openssl rand -base64 48`, por exemplo) e nunca reuse o de
+      `.env.example`.
+- [ ] **Senhas dos 5 usuários de demonstração** (`admin@projetos.local` e os
+      demais — ver [Contas de demonstração](#contas-de-demonstração)): a
+      senha padrão `Mudar@123` é pública (está neste README). O
+      `render.yaml` gera uma `SEED_DEMO_PASSWORD` aleatória para o **seed**
+      do banco do Render, mas como os dados reais foram trazidos pelo script
+      de migração (não pelo seed), **os usuários reais migrados mantêm as
+      senhas que já tinham no sistema local** — o que é o comportamento
+      correto/esperado. Ainda assim, é uma boa prática pedir para cada
+      pessoa trocar a própria senha (tela de perfil) no primeiro acesso pelo
+      site.
+- [ ] **Anexos de arquivo**: ver a limitação conhecida na seção anterior
+      (disco efêmero no Render) — resolver antes do time depender dessa
+      funcionalidade em produção.
+- [ ] **HTTPS**: garantido automaticamente pelo Render (todo Web Service
+      recebe um domínio `*.onrender.com` com HTTPS); se publicar em outro
+      provedor sem HTTPS gerenciado, configure um proxy reverso com
+      certificado antes de divulgar a URL.
+- [ ] **Envio de e-mail para redefinição de senha**: continua não configurado
+      (ver [Limitações conhecidas](#limitações-conhecidas-e-próximos-passos)
+      abaixo) — o token de redefinição volta na própria resposta da API, o
+      que é aceitável apenas enquanto o acesso ao sistema for restrito a
+      pessoas de confiança.
+- [ ] **Backups do Postgres**: o plano pago do Render inclui backups
+      automáticos diários; confirme a política de retenção no painel do
+      banco e considere exportar um dump manual (`pg_dump`) antes de
+      qualquer operação arriscada (ex.: antes de rodar `reset-db.js`).
 
 ## Limitações conhecidas e próximos passos
 
