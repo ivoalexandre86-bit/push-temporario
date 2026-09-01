@@ -1,20 +1,24 @@
 const request = require('supertest');
 const ExcelJS = require('exceljs');
-const { initTestDb, getDb, getApp, login, withAuth, createProject, createArea, createAction } = require('./helpers');
+const { initTestDb, closeTestDb, getDb, getApp, login, withAuth, createProject, createArea, createAction } = require('./helpers');
 
 let app, db, cookie;
 let proj, area;
 
 beforeAll(async () => {
-  initTestDb();
+  await initTestDb();
   db = getDb();
   app = getApp();
-  proj = createProject(db, 'Projeto Export');
-  area = createArea(db, 'Área Export');
-  createAction(db, { projectId: proj, areaId: area, status: 'ANDAMENTO' });
-  createAction(db, { projectId: proj, areaId: area, status: 'CONCLUÍDO', completionDate: '2026-01-10' });
-  createAction(db, { projectId: proj, areaId: area, status: 'CANCELADO' });
+  proj = await createProject(db, 'Projeto Export');
+  area = await createArea(db, 'Área Export');
+  await createAction(db, { projectId: proj, areaId: area, status: 'ANDAMENTO' });
+  await createAction(db, { projectId: proj, areaId: area, status: 'CONCLUÍDO', completionDate: '2026-01-10' });
+  await createAction(db, { projectId: proj, areaId: area, status: 'CANCELADO' });
   ({ cookie } = await login(app, 'admin@projetos.local', 'Test@1234'));
+});
+
+afterAll(async () => {
+  await closeTestDb();
 });
 
 describe('Filter-aware exports', () => {
@@ -49,7 +53,7 @@ describe('Filter-aware exports', () => {
 
   it('records an EXPORT audit event with the applied filters', async () => {
     await withAuth(request(app).get(`/api/actions/export?format=csv&status=CANCELADO`), cookie);
-    const row = db.prepare("SELECT * FROM audit_log WHERE entity_type='EXPORT' ORDER BY id DESC LIMIT 1").get();
+    const row = await db.get("SELECT * FROM audit_log WHERE entity_type='EXPORT' ORDER BY id DESC LIMIT 1");
     expect(row).toBeTruthy();
     expect(row.new_value).toContain('CANCELADO');
   });

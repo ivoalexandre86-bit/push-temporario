@@ -1,28 +1,32 @@
 const request = require('supertest');
-const { initTestDb, getDb, getApp, login, withAuth, createProject, createArea, createUser, createAction, scopeUserToProject } = require('./helpers');
+const { initTestDb, closeTestDb, getDb, getApp, login, withAuth, createProject, createArea, createUser, createAction, scopeUserToProject } = require('./helpers');
 
 let app, db;
 let projectA, projectB, areaA;
 let pmA, viewerNoScope, admin;
 
 beforeAll(async () => {
-  initTestDb();
+  await initTestDb();
   db = getDb();
   app = getApp();
 
-  projectA = createProject(db, 'Projeto A');
-  projectB = createProject(db, 'Projeto B');
-  areaA = createArea(db, 'Área A');
+  projectA = await createProject(db, 'Projeto A');
+  projectB = await createProject(db, 'Projeto B');
+  areaA = await createArea(db, 'Área A');
 
-  createAction(db, { projectId: projectA, areaId: areaA, status: 'ANDAMENTO' });
-  createAction(db, { projectId: projectB, areaId: areaA, status: 'ANDAMENTO' });
+  await createAction(db, { projectId: projectA, areaId: areaA, status: 'ANDAMENTO' });
+  await createAction(db, { projectId: projectB, areaId: areaA, status: 'ANDAMENTO' });
 
-  pmA = createUser(db, { name: 'PM A', email: 'pm.a@test.local', roleKey: 'PROJECT_MANAGER' });
-  scopeUserToProject(db, pmA, projectA);
+  pmA = await createUser(db, { name: 'PM A', email: 'pm.a@test.local', roleKey: 'PROJECT_MANAGER' });
+  await scopeUserToProject(db, pmA, projectA);
 
-  viewerNoScope = createUser(db, { name: 'Viewer sem escopo', email: 'viewer.none@test.local', roleKey: 'VIEWER' });
+  viewerNoScope = await createUser(db, { name: 'Viewer sem escopo', email: 'viewer.none@test.local', roleKey: 'VIEWER' });
 
   admin = 1; // seeded admin
+});
+
+afterAll(async () => {
+  await closeTestDb();
 });
 
 describe('Authentication', () => {
@@ -57,7 +61,7 @@ describe('Project-level scoping', () => {
 
   it('a Project Manager cannot access another project action by guessing its ID (IDOR check)', async () => {
     const { cookie } = await login(app, 'pm.a@test.local');
-    const other = createAction(db, { projectId: projectB, areaId: areaA, status: 'ANDAMENTO' });
+    const other = await createAction(db, { projectId: projectB, areaId: areaA, status: 'ANDAMENTO' });
     const res = await withAuth(request(app).get(`/api/actions/${other.businessId}`), cookie);
     expect(res.status).toBe(403);
   });
@@ -112,18 +116,18 @@ describe('Role-based write permissions', () => {
   });
 
   it('a Contributor can only edit actions assigned to them', async () => {
-    const contributorId = createUser(db, { name: 'Colaborador X', email: 'contrib.x@test.local', roleKey: 'CONTRIBUTOR' });
-    scopeUserToProject(db, contributorId, projectA);
-    const assignedToOther = createAction(db, { projectId: projectA, areaId: areaA, status: 'ANDAMENTO', assigneeUserId: admin });
+    const contributorId = await createUser(db, { name: 'Colaborador X', email: 'contrib.x@test.local', roleKey: 'CONTRIBUTOR' });
+    await scopeUserToProject(db, contributorId, projectA);
+    const assignedToOther = await createAction(db, { projectId: projectA, areaId: areaA, status: 'ANDAMENTO', assigneeUserId: admin });
     const { cookie } = await login(app, 'contrib.x@test.local');
     const res = await withAuth(request(app).patch(`/api/actions/${assignedToOther.businessId}`), cookie).send({ observations: 'tentando editar' });
     expect(res.status).toBe(403);
   });
 
   it('a Contributor CAN edit an action assigned to them', async () => {
-    const contributorId = createUser(db, { name: 'Colaborador Y', email: 'contrib.y@test.local', roleKey: 'CONTRIBUTOR' });
-    scopeUserToProject(db, contributorId, projectA);
-    const assigned = createAction(db, { projectId: projectA, areaId: areaA, status: 'ANDAMENTO', assigneeUserId: contributorId });
+    const contributorId = await createUser(db, { name: 'Colaborador Y', email: 'contrib.y@test.local', roleKey: 'CONTRIBUTOR' });
+    await scopeUserToProject(db, contributorId, projectA);
+    const assigned = await createAction(db, { projectId: projectA, areaId: areaA, status: 'ANDAMENTO', assigneeUserId: contributorId });
     const { cookie } = await login(app, 'contrib.y@test.local');
     const res = await withAuth(request(app).patch(`/api/actions/${assigned.businessId}`), cookie).send({ observations: 'atualizado pelo colaborador' });
     expect(res.status).toBe(200);

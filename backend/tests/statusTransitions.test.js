@@ -1,16 +1,20 @@
 const request = require('supertest');
-const { initTestDb, getDb, getApp, login, withAuth, createProject, createArea, createAction } = require('./helpers');
+const { initTestDb, closeTestDb, getDb, getApp, login, withAuth, createProject, createArea, createAction } = require('./helpers');
 
 let app, db, cookie;
 let proj, area;
 
 beforeAll(async () => {
-  initTestDb();
+  await initTestDb();
   db = getDb();
   app = getApp();
-  proj = createProject(db, 'Projeto Status');
-  area = createArea(db, 'Área Status');
+  proj = await createProject(db, 'Projeto Status');
+  area = await createArea(db, 'Área Status');
   ({ cookie } = await login(app, 'admin@projetos.local', 'Test@1234'));
+});
+
+afterAll(async () => {
+  await closeTestDb();
 });
 
 describe('Business rules: status transitions', () => {
@@ -43,7 +47,7 @@ describe('Business rules: status transitions', () => {
   });
 
   it('requires an explicit reason to reopen a CONCLUÍDO action', async () => {
-    const action = createAction(db, { projectId: proj, areaId: area, status: 'CONCLUÍDO', completionDate: '2026-01-20' });
+    const action = await createAction(db, { projectId: proj, areaId: area, status: 'CONCLUÍDO', completionDate: '2026-01-20' });
     const res = await withAuth(request(app).patch(`/api/actions/${action.businessId}`), cookie).send({ status: 'ANDAMENTO' });
     expect(res.status).toBe(400);
 
@@ -66,17 +70,18 @@ describe('Business rules: status transitions', () => {
   });
 
   it('every create/update produces an audit trail entry', async () => {
-    const before = db.prepare("SELECT COUNT(*) c FROM audit_log WHERE entity_type='ACTION'").get().c;
+    const beforeRow = await db.get("SELECT COUNT(*) c FROM audit_log WHERE entity_type='ACTION'");
+    const before = beforeRow.c;
     const res = await withAuth(request(app).post('/api/actions'), cookie).send({
       projectId: proj, areaId: area, refMonth: '2026-01', description: 'Ação para auditoria', status: 'ANDAMENTO', responsibleName: 'Zeca',
     });
     expect(res.status).toBe(201);
-    const after = db.prepare("SELECT COUNT(*) c FROM audit_log WHERE entity_type='ACTION'").get().c;
-    expect(after).toBeGreaterThan(before);
+    const afterRow = await db.get("SELECT COUNT(*) c FROM audit_log WHERE entity_type='ACTION'");
+    expect(afterRow.c).toBeGreaterThan(before);
 
     const patchRes = await withAuth(request(app).patch(`/api/actions/${res.body.id}`), cookie).send({ observations: 'nota adicionada' });
     expect(patchRes.status).toBe(200);
-    const rows = db.prepare("SELECT * FROM audit_log WHERE entity_type='ACTION' AND entity_id = ? AND field_name = 'observations'").all(res.body.uuid);
+    const rows = await db.all("SELECT * FROM audit_log WHERE entity_type='ACTION' AND entity_id = ? AND field_name = 'observations'", res.body.uuid);
     expect(rows.length).toBe(1);
     expect(rows[0].new_value).toBe('nota adicionada');
   });

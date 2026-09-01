@@ -1,23 +1,27 @@
 const request = require('supertest');
-const { initTestDb, getDb, getApp, login, withAuth, createProject, createArea, createAction, createUser } = require('./helpers');
+const { initTestDb, closeTestDb, getDb, getApp, login, withAuth, createProject, createArea, createAction, createUser } = require('./helpers');
 
 let app, db, adminCookie, auditorCookie;
 let proj, area;
 
 beforeAll(async () => {
-  initTestDb();
+  await initTestDb();
   db = getDb();
   app = getApp();
-  proj = createProject(db, 'Projeto Auditoria');
-  area = createArea(db, 'Área Auditoria');
-  createUser(db, { name: 'Auditor X', email: 'auditor.x@test.local', roleKey: 'AUDITOR' });
+  proj = await createProject(db, 'Projeto Auditoria');
+  area = await createArea(db, 'Área Auditoria');
+  await createUser(db, { name: 'Auditor X', email: 'auditor.x@test.local', roleKey: 'AUDITOR' });
   ({ cookie: adminCookie } = await login(app, 'admin@projetos.local', 'Test@1234'));
   ({ cookie: auditorCookie } = await login(app, 'auditor.x@test.local'));
 });
 
+afterAll(async () => {
+  await closeTestDb();
+});
+
 describe('Audit trail', () => {
   it('is immutable: no route exists to update or delete an audit_log record', async () => {
-    const row = db.prepare('SELECT * FROM audit_log LIMIT 1').get();
+    const row = await db.get('SELECT * FROM audit_log LIMIT 1');
     if (row) {
       const patchRes = await withAuth(request(app).patch(`/api/audit/${row.id}`), adminCookie).send({ new_value: 'hacked' });
       expect(patchRes.status).toBe(404);
@@ -37,20 +41,20 @@ describe('Audit trail', () => {
   });
 
   it('a non-auditor, non-admin role cannot view the audit trail', async () => {
-    createUser(db, { name: 'Viewer sem auditoria', email: 'viewer.audit@test.local', roleKey: 'VIEWER' });
+    await createUser(db, { name: 'Viewer sem auditoria', email: 'viewer.audit@test.local', roleKey: 'VIEWER' });
     const { cookie } = await login(app, 'viewer.audit@test.local');
     const res = await withAuth(request(app).get('/api/audit'), cookie);
     expect(res.status).toBe(403);
   });
 
   it('records old and new values, actor, and timestamp for a status change', async () => {
-    const action = createAction(db, { projectId: proj, areaId: area, status: 'ANDAMENTO' });
+    const action = await createAction(db, { projectId: proj, areaId: area, status: 'ANDAMENTO' });
     const res = await withAuth(request(app).patch(`/api/actions/${action.businessId}`), adminCookie).send({ status: 'EM ESTUDO' });
     expect(res.status).toBe(200);
 
-    const auditRow = db.prepare(`
+    const auditRow = await db.get(`
       SELECT * FROM audit_log WHERE entity_type = 'ACTION' AND entity_id = ? AND field_name = 'status' ORDER BY id DESC LIMIT 1
-    `).get(action.uuid);
+    `, action.uuid);
     expect(auditRow).toBeTruthy();
     expect(auditRow.old_value).toBe('ANDAMENTO');
     expect(auditRow.new_value).toBe('EM ESTUDO');

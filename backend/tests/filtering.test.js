@@ -1,25 +1,29 @@
 const request = require('supertest');
-const { initTestDb, getDb, getApp, login, withAuth, createProject, createArea, createAction } = require('./helpers');
+const { initTestDb, closeTestDb, getDb, getApp, login, withAuth, createProject, createArea, createAction } = require('./helpers');
 
 let app, db, cookie;
 let projA, projB, areaX, areaY;
 
 beforeAll(async () => {
-  initTestDb();
+  await initTestDb();
   db = getDb();
   app = getApp();
 
-  projA = createProject(db, 'Projeto Filtro A');
-  projB = createProject(db, 'Projeto Filtro B');
-  areaX = createArea(db, 'Área Filtro X');
-  areaY = createArea(db, 'Área Filtro Y');
+  projA = await createProject(db, 'Projeto Filtro A');
+  projB = await createProject(db, 'Projeto Filtro B');
+  areaX = await createArea(db, 'Área Filtro X');
+  areaY = await createArea(db, 'Área Filtro Y');
 
-  createAction(db, { projectId: projA, areaId: areaX, status: 'ANDAMENTO', refMonth: '2026-01-01', responsibleName: 'Ana' });
-  createAction(db, { projectId: projA, areaId: areaY, status: 'CONCLUÍDO', refMonth: '2026-02-01', responsibleName: 'Bruno', completionDate: '2026-02-10' });
-  createAction(db, { projectId: projB, areaId: areaX, status: 'EM ESTUDO', refMonth: '2026-01-01', responsibleName: 'Ana' });
-  createAction(db, { projectId: projB, areaId: areaY, status: 'CANCELADO', refMonth: '2026-03-01', responsibleName: 'Carla' });
+  await createAction(db, { projectId: projA, areaId: areaX, status: 'ANDAMENTO', refMonth: '2026-01-01', responsibleName: 'Ana' });
+  await createAction(db, { projectId: projA, areaId: areaY, status: 'CONCLUÍDO', refMonth: '2026-02-01', responsibleName: 'Bruno', completionDate: '2026-02-10' });
+  await createAction(db, { projectId: projB, areaId: areaX, status: 'EM ESTUDO', refMonth: '2026-01-01', responsibleName: 'Ana' });
+  await createAction(db, { projectId: projB, areaId: areaY, status: 'CANCELADO', refMonth: '2026-03-01', responsibleName: 'Carla' });
 
   ({ cookie } = await login(app, 'admin@projetos.local', 'Test@1234'));
+});
+
+afterAll(async () => {
+  await closeTestDb();
 });
 
 async function query(qs) {

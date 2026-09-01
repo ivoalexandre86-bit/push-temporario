@@ -1,27 +1,44 @@
-const path = require('path');
-const os = require('os');
-const fs = require('fs');
+const { PGlite } = require('@electric-sql/pglite');
+const { PGLiteSocketServer } = require('@electric-sql/pglite-socket');
 const { v4: uuidv4 } = require('uuid');
 const request = require('supertest');
 
+let pglite;
+let socketServer;
+
 /**
- * Points DB_PATH at a fresh temp SQLite file and runs migrations + seed.
- * Must be called before requiring '../src/app' (or anything that transitively
+ * Boots a fresh in-memory PGlite instance (a WASM-embedded Postgres, no
+ * server/root install needed) behind a local TCP socket, points
+ * DATABASE_URL at it, and runs migrations + seed. Must be called (and
+ * awaited) before requiring '../src/app' (or anything that transitively
  * requires '../src/db/connection'). Vitest gives each test file its own
- * module registry by default, so this is safe to call once per file.
+ * process (pool: 'forks'), so this is safe to call once per file.
  */
-function initTestDb() {
-  const tmpDb = path.join(os.tmpdir(), `projetos-test-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.db`);
-  process.env.DB_PATH = tmpDb;
+async function initTestDb() {
+  pglite = new PGlite();
+  socketServer = new PGLiteSocketServer({ db: pglite, port: 0, host: '127.0.0.1', maxConnections: 5 });
+  await socketServer.start();
+  const [host, port] = socketServer.getServerConn().split(':');
+
+  process.env.DATABASE_URL = `postgres://postgres:postgres@${host}:${port}/postgres`;
+  process.env.PGSSLMODE = 'disable';
   process.env.JWT_SECRET = 'test-secret-not-for-production';
   process.env.NODE_ENV = 'test';
   process.env.SEED_DEMO_PASSWORD = 'Test@1234';
   process.env.CORS_ORIGIN = 'http://localhost:5173';
 
-  require('../src/db/migrate').run();
-  require('../src/db/seed').run();
+  await require('../src/db/migrate').run();
+  await require('../src/db/seed').run();
+}
 
-  return tmpDb;
+/** Releases the pg pool and shuts down the PGlite instance for this file. */
+async function closeTestDb() {
+  try {
+    const db = require('../src/db/connection');
+    await db.pool.end();
+  } catch (err) { /* ignore */ }
+  if (socketServer) await socketServer.stop().catch(() => {});
+  if (pglite) await pglite.close().catch(() => {});
 }
 
 function getDb() {
@@ -39,53 +56,47 @@ async function login(app, email, password = 'Test@1234') {
   return { cookie, token: res.body.token, user: res.body.user };
 }
 
-/** Returns a supertest agent pre-authenticated as the given demo user, with the CSRF header pre-set. */
-function authed(app, cookie) {
-  const agent = request.agent(app);
-  agent.set('X-Requested-With', 'ProjetosApp');
-  if (cookie) agent.jar && null; // supertest.agent manages cookies automatically once we call with cookie header manually below
-  return { agent, cookie };
-}
-
 /** Helper to attach auth cookie + CSRF header to a single supertest request. */
 function withAuth(req, cookie) {
   return req.set('Cookie', cookie).set('X-Requested-With', 'ProjetosApp');
 }
 
-function createProject(db, name, opts = {}) {
-  const info = db.prepare('INSERT INTO projects (name, is_imported) VALUES (?, 1)').run(name);
+async function createProject(db, name) {
+  const info = await db.run('INSERT INTO projects (name, is_imported) VALUES (?, 1) RETURNING id', name);
   return info.lastInsertRowid;
 }
 
-function createArea(db, name) {
-  const info = db.prepare('INSERT INTO areas (name, is_imported) VALUES (?, 1)').run(name);
+async function createArea(db, name) {
+  const info = await db.run('INSERT INTO areas (name, is_imported) VALUES (?, 1) RETURNING id', name);
   return info.lastInsertRowid;
 }
 
-function createUser(db, { name, email, roleKey, active = 1 }) {
+async function createUser(db, { name, email, roleKey, active = 1 }) {
   const bcrypt = require('bcryptjs');
-  const role = db.prepare('SELECT id FROM roles WHERE key = ?').get(roleKey);
+  const role = await db.get('SELECT id FROM roles WHERE key = ?', roleKey);
   const hash = bcrypt.hashSync('Test@1234', 10);
-  const info = db.prepare('INSERT INTO users (name, email, password_hash, role_id, active) VALUES (?, ?, ?, ?, ?)')
-    .run(name, email, hash, role.id, active);
+  const info = await db.run(
+    'INSERT INTO users (name, email, password_hash, role_id, active) VALUES (?, ?, ?, ?, ?) RETURNING id',
+    name, email, hash, role.id, active
+  );
   return info.lastInsertRowid;
 }
 
-function scopeUserToProject(db, userId, projectId) {
-  db.prepare('INSERT OR IGNORE INTO user_project_scope (user_id, project_id) VALUES (?, ?)').run(userId, projectId);
+async function scopeUserToProject(db, userId, projectId) {
+  await db.run('INSERT INTO user_project_scope (user_id, project_id) VALUES (?, ?) ON CONFLICT (user_id, project_id) DO NOTHING', userId, projectId);
 }
 
-function createAction(db, { projectId, areaId, status = 'ANDAMENTO', businessId, responsibleName = 'Fulano', assigneeUserId = null, plannedHours = null, dueDate = null, completionDate = null, startDate = null, refMonth = '2026-01-01', description = 'Ação de teste' }) {
+async function createAction(db, { projectId, areaId, status = 'ANDAMENTO', businessId, responsibleName = 'Fulano', assigneeUserId = null, plannedHours = null, dueDate = null, completionDate = null, startDate = null, refMonth = '2026-01-01', description = 'Ação de teste' }) {
   const uuid = uuidv4();
-  const maxId = db.prepare('SELECT MAX(business_id) AS m FROM actions').get().m || 0;
-  const id = businessId || maxId + 1;
-  db.prepare(`
+  const maxRow = await db.get('SELECT MAX(business_id) AS m FROM actions');
+  const id = businessId || (maxRow.m || 0) + 1;
+  await db.run(`
     INSERT INTO actions (uuid, business_id, project_id, ref_month, area_id, description, responsible_name, assignee_user_id, planned_hours, start_date, due_date, completion_date, status, source, created_by, updated_by)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'MANUAL', 1, 1)
-  `).run(uuid, id, projectId, refMonth, areaId, description, responsibleName, assigneeUserId, plannedHours, startDate, dueDate, completionDate, status);
+  `, uuid, id, projectId, refMonth, areaId, description, responsibleName, assigneeUserId, plannedHours, startDate, dueDate, completionDate, status);
   return { uuid, businessId: id };
 }
 
 module.exports = {
-  initTestDb, getDb, getApp, login, withAuth, createProject, createArea, createUser, createAction, scopeUserToProject,
+  initTestDb, closeTestDb, getDb, getApp, login, withAuth, createProject, createArea, createUser, createAction, scopeUserToProject,
 };

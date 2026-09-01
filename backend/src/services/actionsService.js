@@ -2,8 +2,11 @@ const db = require('../db/connection');
 const { todayISODate, addDaysISO } = require('../utils/dates');
 
 async function nextBusinessId() {
-  const row = await db.get('SELECT MAX(business_id) AS maxId FROM actions');
-  return (row.maxId || 0) + 1;
+  // Postgres folds unquoted identifiers (including AS aliases) to lower
+  // case, so a camelCase alias like "AS maxId" comes back as the key
+  // "maxid", not "maxId" - use snake_case here to avoid that trap.
+  const row = await db.get('SELECT MAX(business_id) AS max_id FROM actions');
+  return (row.max_id || 0) + 1;
 }
 
 function parseExceptions(json) {
