@@ -31,7 +31,7 @@
 
 databases:
   - name: projetos-db
-    plan: starter
+    plan: free
     region: oregon
     postgresMajorVersion: "16"
 
