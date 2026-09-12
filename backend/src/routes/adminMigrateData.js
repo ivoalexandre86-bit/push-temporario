@@ -13,9 +13,46 @@
 // production.
 
 const express = require('express');
+const bcrypt = require('bcryptjs');
 const db = require('../db/connection');
 
 const router = express.Router();
+
+// TEMPORARY: resets the password of one or more existing users directly in
+// the production database. Needed because the normal "esqueci minha senha"
+// flow only returns its reset token outside NODE_ENV=production (no email
+// transport is configured), so it can't be used to recover the demo
+// accounts here. Guarded by the same ADMIN_MIGRATE_TOKEN as the migration
+// endpoint above. Remove together with the rest of this file once no
+// longer needed.
+router.post('/admin/reset-password', express.json({ limit: '1mb' }), async (req, res, next) => {
+  try {
+    const token = process.env.ADMIN_MIGRATE_TOKEN;
+    if (!token) return res.status(404).json({ error: 'NOT_FOUND' });
+    if (req.get('Authorization') !== `Bearer ${token}`) {
+      return res.status(401).json({ error: 'UNAUTHORIZED' });
+    }
+
+    const { emails, newPassword } = req.body || {};
+    if (!Array.isArray(emails) || !emails.length || typeof newPassword !== 'string' || newPassword.length < 8) {
+      return res.status(400).json({ error: 'BAD_BODY', message: 'Esperado { emails: ["..."], newPassword: "..." } (senha com 8+ caracteres).' });
+    }
+
+    const passwordHash = bcrypt.hashSync(newPassword, 10);
+    const updated = [];
+    for (const email of emails) {
+      const result = await db.run(
+        'UPDATE users SET password_hash = ?, must_change_password = 0, failed_login_count = 0, locked_until = NULL WHERE lower(email) = lower(?)',
+        passwordHash, email
+      );
+      updated.push({ email, changed: result.changes || 0 });
+    }
+
+    res.json({ ok: true, updated });
+  } catch (err) {
+    next(err);
+  }
+});
 
 const TABLES = [
   { name: 'roles', conflict: ['id'] },
