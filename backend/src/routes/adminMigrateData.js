@@ -141,4 +141,27 @@ router.post('/admin/migrate-data', express.json({ limit: '20mb' }), async (req, 
   }
 });
 
+// TEMPORARY: runs the normal `npm run seed` logic (roles, permissions, the
+// 5 demo users) against production. This was never actually applied on
+// deploy - render.yaml's startCommand only runs `npm run migrate` (schema),
+// never `npm run seed` - so the demo accounts never existed here, which is
+// why resetting their password above always reported changed:0. Safe to
+// call more than once: seed.js only inserts with ON CONFLICT DO NOTHING.
+// Remove together with the rest of this file once no longer needed.
+router.post('/admin/run-seed', async (req, res, next) => {
+  try {
+    const token = process.env.ADMIN_MIGRATE_TOKEN;
+    if (!token) return res.status(404).json({ error: 'NOT_FOUND' });
+    if (req.get('Authorization') !== `Bearer ${token}`) {
+      return res.status(401).json({ error: 'UNAUTHORIZED' });
+    }
+
+    await require('../db/seed').run();
+    const count = await db.get('SELECT COUNT(*) AS n FROM users');
+    res.json({ ok: true, usersInDb: count.n });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;
