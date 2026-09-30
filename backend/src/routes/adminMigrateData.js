@@ -91,6 +91,18 @@ router.post('/admin/migrate-data', express.json({ limit: '20mb' }), async (req, 
       return res.status(400).json({ error: 'BAD_BODY', message: 'Esperado { tables: { ... } }' });
     }
 
+    // Optional: when a previous partial migration (or the demo seed from
+    // adminRunSeed below) already left some rows behind, their ids can
+    // collide with the real ids in this dump (the real data preserves its
+    // original ids exactly, see migrate-sqlite-to-postgres.js), causing
+    // ON CONFLICT DO NOTHING to silently skip real rows and/or leave FK
+    // columns (assignee_user_id, person_id's user_id, ...) pointing at the
+    // wrong row. Passing resetAccessControl: true clears every table this
+    // endpoint manages first (in reverse dependency order, so FKs never
+    // block the deletes), then the normal insert loop below reinserts
+    // everything fresh and consistent from this dump.
+    const resetAccessControl = req.body && req.body.resetAccessControl === true;
+
     const pgColumnsByTable = {};
     for (const { name: table } of TABLES) {
       const rows = await db.all(
@@ -103,6 +115,12 @@ router.post('/admin/migrate-data', express.json({ limit: '20mb' }), async (req, 
     const summary = {};
 
     await db.transaction(async (tx) => {
+      if (resetAccessControl) {
+        for (const { name: table } of [...TABLES].reverse()) {
+          await tx.run(`DELETE FROM ${table}`);
+        }
+      }
+
       for (const { name: table, conflict } of TABLES) {
         const sourceRows = dump[table] || [];
         if (!sourceRows.length) {
