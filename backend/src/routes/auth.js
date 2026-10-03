@@ -12,6 +12,13 @@ const router = express.Router();
 
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCK_MINUTES = 15;
+const DEMO_EMAILS = new Set([
+  'admin@projetos.local',
+  'gerente@projetos.local',
+  'colaborador@projetos.local',
+  'visualizador@projetos.local',
+  'auditor@projetos.local',
+]);
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -31,6 +38,13 @@ router.post('/login', loginLimiter, async (req, res, next) => {
   try {
     const { email, password } = loginSchema.parse(req.body);
     const user = await getUserByEmail(email);
+
+    // Seeded accounts are intended for local evaluation, never a public deployment.
+    if (process.env.NODE_ENV === 'production' && process.env.ALLOW_DEMO_USERS !== 'true'
+      && DEMO_EMAILS.has(email.toLowerCase())) {
+      await auditService.record({ entityType: 'AUTH', entityId: email, actionType: 'LOGIN_FAILED', actor: null, req, newValue: 'demo account disabled in production' });
+      return res.status(401).json({ error: 'INVALID_CREDENTIALS', message: 'E-mail ou senha inválidos.' });
+    }
 
     if (!user) {
       await auditService.record({ entityType: 'AUTH', entityId: email, actionType: 'LOGIN_FAILED', actor: null, req, newValue: 'user not found' });

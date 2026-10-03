@@ -5,6 +5,16 @@ import { Loading, ErrorState, EmptyState } from '../components/Loading';
 import { formatDateTime } from '../utils/format';
 
 const ENTITY_TYPES = ['ACTION', 'USER', 'PROJECT', 'AREA', 'TIME_ENTRY', 'AUTH', 'EXPORT'];
+const LABELS = {
+  ACTION: 'Ação', USER: 'Usuário', PROJECT: 'Projeto', AREA: 'Área', TIME_ENTRY: 'Lançamento de horas', AUTH: 'Acesso', EXPORT: 'Exportação',
+  CREATE: 'Criação', UPDATE: 'Alteração', DELETE: 'Exclusão', STATUS_CHANGE: 'Mudança de status', COMMENT: 'Comentário',
+  LOGIN: 'Entrada', LOGOUT: 'Saída', LOGIN_FAILED: 'Tentativa de acesso sem sucesso', PASSWORD_RESET: 'Senha redefinida',
+  PASSWORD_RESET_REQUESTED: 'Redefinição de senha solicitada', PASSWORD_RESET_BY_ADMIN: 'Senha redefinida pelo administrador',
+  EXPORT: 'Exportação', IMPORT: 'Importação', STATUS_CHANGE_REASON: 'Motivo da mudança de status',
+  name: 'Nome', description: 'Descrição', active: 'Ativo', manager_user_id: 'Gerente do projeto', status: 'Status',
+  start_date: 'Data de início', due_date: 'Prazo', completion_date: 'Data de conclusão', planned_hours: 'Horas planejadas',
+  actual_hours: 'Horas reais', responsible_name: 'Responsável', assignee_user_id: 'Responsável no sistema', project_id: 'Projeto', area_id: 'Área/processo',
+};
 
 export default function Audit() {
   const { projects } = useCatalogs();
@@ -49,7 +59,7 @@ export default function Audit() {
           <label className="block text-xs font-medium text-gray-600 mb-1">Entidade</label>
           <select value={filters.entityType} onChange={(e) => set({ entityType: e.target.value })} className="input">
             <option value="">Todas</option>
-            {ENTITY_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+            {ENTITY_TYPES.map((t) => <option key={t} value={t}>{LABELS[t] || t}</option>)}
           </select>
         </div>
         <div>
@@ -65,7 +75,7 @@ export default function Audit() {
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">Tipo de alteração</label>
-          <input value={filters.actionType} onChange={(e) => set({ actionType: e.target.value })} placeholder="UPDATE, CREATE..." className="input" />
+          <input value={filters.actionType} onChange={(e) => set({ actionType: e.target.value })} placeholder="Filtrar pelo tipo registrado" className="input" />
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">De</label>
@@ -103,13 +113,13 @@ export default function Audit() {
                   {data.items.map((ev) => (
                     <tr key={ev.id} className="border-b border-gray-50">
                       <td className="px-3 py-2 whitespace-nowrap">{formatDateTime(ev.created_at)}</td>
-                      <td className="px-3 py-2">{ev.entity_type}</td>
+                      <td className="px-3 py-2">{LABELS[ev.entity_type] || ev.entity_type}</td>
                       <td className="px-3 py-2">{ev.business_id ?? '—'}</td>
                       <td className="px-3 py-2">{ev.project_name || '—'}</td>
-                      <td className="px-3 py-2">{ev.action_type}</td>
-                      <td className="px-3 py-2">{ev.field_name || '—'}</td>
-                      <td className="px-3 py-2 max-w-[12rem] truncate" title={ev.old_value}>{ev.old_value ?? '—'}</td>
-                      <td className="px-3 py-2 max-w-[12rem] truncate" title={ev.new_value}>{ev.new_value ?? '—'}</td>
+                      <td className="px-3 py-2">{LABELS[ev.action_type] || ev.action_type}</td>
+                      <td className="px-3 py-2">{LABELS[ev.field_name] || ev.field_name || '—'}</td>
+                      <td className="px-3 py-2 max-w-[14rem]"><AuditValue value={ev.old_value} /></td>
+                      <td className="px-3 py-2 max-w-[14rem]"><AuditValue value={ev.new_value} /></td>
                       <td className="px-3 py-2">{ev.actor_name}</td>
                     </tr>
                   ))}
@@ -128,4 +138,22 @@ export default function Audit() {
       )}
     </div>
   );
+}
+
+function AuditValue({ value }) {
+  if (value === null || value === undefined || value === '') return '—';
+  let parsed = value;
+  if (typeof value === 'string') {
+    try { parsed = JSON.parse(value); } catch { /* Plain-text audit value. */ }
+  }
+  if (parsed && typeof parsed === 'object') {
+    const formatted = JSON.stringify(parsed, null, 2);
+    return (
+      <details>
+        <summary className="cursor-pointer text-blue-700">Ver detalhes</summary>
+        <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded bg-gray-50 p-2 text-xs">{formatted}</pre>
+      </details>
+    );
+  }
+  return <span className="break-words" title={String(parsed)}>{String(parsed)}</span>;
 }

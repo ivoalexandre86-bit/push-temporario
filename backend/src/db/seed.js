@@ -33,6 +33,13 @@ async function seedRolesAndPermissions(tx) {
 }
 
 async function seedUsers(tx) {
+  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_DEMO_USERS !== 'true') {
+    console.log('[seed] demo users skipped in production; set ALLOW_DEMO_USERS=true only for an isolated demo environment');
+    return;
+  }
+  if (process.env.NODE_ENV === 'production' && !process.env.SEED_DEMO_PASSWORD) {
+    throw new Error('SEED_DEMO_PASSWORD is required when seeding demo users in production.');
+  }
   const passwordHash = bcrypt.hashSync(DEMO_PASSWORD, 10);
 
   const demoUsers = [
@@ -50,7 +57,7 @@ async function seedUsers(tx) {
       u.name, u.email, passwordHash, role.id
     );
   }
-  console.log(`[seed] demo users ready (password: ${DEMO_PASSWORD})`);
+  console.log('[seed] demo users ready');
 }
 
 async function run() {

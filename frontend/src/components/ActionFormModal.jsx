@@ -34,6 +34,14 @@ export default function ActionFormModal({ open, onClose, onCreated, defaultProje
       setError('Informe um responsável ou marque "sem responsável".');
       return;
     }
+    if (form.startDate && form.dueDate && form.dueDate < form.startDate) {
+      setError('O prazo não pode ser anterior à data de início.');
+      return;
+    }
+    if (form.startDate && form.completionDate && form.completionDate < form.startDate) {
+      setError('A data de conclusão não pode ser anterior à data de início.');
+      return;
+    }
     if (form.status === 'CONCLUÍDO' && !form.completionDate) {
       setError('Ações concluídas exigem a data de conclusão.');
       return;

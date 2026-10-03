@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { useToast } from '../context/ToastContext';
 
-export default function ProjectFormModal({ open, onClose, onCreated }) {
+export default function ProjectFormModal({ open, onClose, onCreated, project = null }) {
   const toast = useToast();
   const [form, setForm] = useState(emptyForm());
   const [users, setUsers] = useState([]);
@@ -11,10 +11,14 @@ export default function ProjectFormModal({ open, onClose, onCreated }) {
 
   useEffect(() => {
     if (!open) return;
-    setForm(emptyForm());
+    setForm(project ? {
+      name: project.name || '',
+      description: project.description || '',
+      managerUserId: project.manager_user_id ? String(project.manager_user_id) : '',
+    } : emptyForm());
     setError('');
-    api.get('/users').then((d) => setUsers(d.items || [])).catch(() => setUsers([]));
-  }, [open]);
+    api.get('/projects/managers').then((d) => setUsers(d.items || [])).catch((e) => setError(e.message));
+  }, [open, project]);
 
   if (!open) return null;
 
@@ -23,19 +27,22 @@ export default function ProjectFormModal({ open, onClose, onCreated }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    if (!form.name.trim()) {
-      setError('Informe o nome do projeto.');
+    if (!form.name.trim() || !form.managerUserId) {
+      setError('Informe o nome do projeto e selecione um gerente ativo.');
       return;
     }
     setSaving(true);
     try {
-      const created = await api.post('/projects', {
+      const payload = {
         name: form.name.trim(),
         description: form.description || null,
         managerUserId: form.managerUserId ? Number(form.managerUserId) : null,
-      });
-      toast.success(`Projeto "${form.name.trim()}" criado com sucesso.`);
-      onCreated?.(created);
+      };
+      const saved = project
+        ? await api.patch(`/projects/${project.id}`, payload)
+        : await api.post('/projects', payload);
+      toast.success(project ? 'Projeto atualizado com sucesso.' : `Projeto "${form.name.trim()}" criado com sucesso.`);
+      onCreated?.(saved);
       onClose();
     } catch (err) {
       setError(err.message);
@@ -47,7 +54,7 @@ export default function ProjectFormModal({ open, onClose, onCreated }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-8 overflow-y-auto" onClick={onClose}>
       <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6 my-auto" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">Novo projeto</h2>
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">{project ? 'Editar projeto' : 'Novo projeto'}</h2>
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && <p role="alert" className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md px-3 py-2">{error}</p>}
 
@@ -59,19 +66,17 @@ export default function ProjectFormModal({ open, onClose, onCreated }) {
             <textarea rows={3} value={form.description} onChange={(e) => set({ description: e.target.value })} className="input" />
           </Field>
 
-          {users.length > 0 && (
-            <Field label="Gerente de projeto">
-              <select value={form.managerUserId} onChange={(e) => set({ managerUserId: e.target.value })} className="input">
-                <option value="">Não definido</option>
-                {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-              </select>
-            </Field>
-          )}
+          <Field label="Gerente de projeto *">
+            <select required value={form.managerUserId} onChange={(e) => set({ managerUserId: e.target.value })} className="input">
+              <option value="">Selecione...</option>
+              {users.filter((u) => u.active && ['ADMIN', 'PROJECT_MANAGER'].includes(u.role)).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+            </select>
+          </Field>
 
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" onClick={onClose} className="px-4 py-2 rounded-md text-sm font-medium border border-gray-300 text-gray-700 hover:bg-gray-50">Cancelar</button>
             <button type="submit" disabled={saving} className="px-4 py-2 rounded-md text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-60">
-              {saving ? 'Salvando...' : 'Criar projeto'}
+              {saving ? 'Salvando...' : project ? 'Salvar alterações' : 'Criar projeto'}
             </button>
           </div>
         </form>

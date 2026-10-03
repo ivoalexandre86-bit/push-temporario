@@ -72,6 +72,14 @@ export default function ActionDetail() {
   };
 
   const handleSave = async () => {
+    if (editForm.startDate && editForm.dueDate && editForm.dueDate < editForm.startDate) {
+      toast.error('O prazo não pode ser anterior à data de início.');
+      return;
+    }
+    if (editForm.startDate && editForm.completionDate && editForm.completionDate < editForm.startDate) {
+      toast.error('A data de conclusão não pode ser anterior à data de início.');
+      return;
+    }
     const patch = {};
     if (editForm.projectId !== String(action.project.id)) patch.projectId = Number(editForm.projectId);
     if (editForm.areaId !== String(action.area.id)) patch.areaId = Number(editForm.areaId);

@@ -66,11 +66,6 @@ export default function Login() {
             <Link to="/esqueci-senha" className="text-sm text-blue-600 hover:underline">Esqueci minha senha</Link>
           </div>
         </form>
-        <div className="mt-4 bg-gray-100 rounded-lg p-3 text-xs text-gray-500 space-y-0.5">
-          <p className="font-semibold text-gray-600">Contas de demonstração (senha: Mudar@123):</p>
-          <p>admin@projetos.local · gerente@projetos.local · colaborador@projetos.local</p>
-          <p>visualizador@projetos.local · auditor@projetos.local</p>
-        </div>
       </div>
     </div>
   );

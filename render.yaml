@@ -57,10 +57,8 @@ services:
         generateValue: true
       - key: ACCESS_TOKEN_TTL
         value: 30m
-      - key: SEED_DEMO_PASSWORD
-        generateValue: true
-      - key: ADMIN_MIGRATE_TOKEN
-        value: "044638c65a9511cbfb23a20fdb462ccab08be7a30276dd4d"  # TEMPORARY - remove after one-time data migration
+      # Demo users are disabled in production unless explicitly enabled for an
+      # isolated demo deployment. Never commit demo passwords or migration tokens.
       # CORS_ORIGIN is intentionally left unset: the frontend is served from
       # this same Express server/origin (see backend/src/app.js), so the
       # browser never makes a cross-origin request that needs it. Only set

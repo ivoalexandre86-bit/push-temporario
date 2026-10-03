@@ -15,11 +15,23 @@ router.use(requirePermission(PERMISSIONS.ACTIONS_VIEW));
 
 const REPORT_BUILDERS = {
   'monthly-status-summary': async (where, params) => {
-    const rows = await db.all(`
+    const grouped = await db.all(`
       SELECT a.ref_month AS month, a.status,
         COUNT(*) AS count
       ${BASE_FROM} WHERE ${where} GROUP BY a.ref_month, a.status ORDER BY a.ref_month
     `, ...params);
+    const rows = [];
+    if (grouped.length) {
+      const counts = new Map(grouped.map((row) => [`${row.month}|${row.status}`, row.count]));
+      const firstMonth = new Date(`${grouped[0].month.slice(0, 7)}-01T00:00:00.000Z`);
+      const lastMonth = new Date(`${grouped[grouped.length - 1].month.slice(0, 7)}-01T00:00:00.000Z`);
+      for (const cursor = new Date(firstMonth); cursor <= lastMonth; cursor.setUTCMonth(cursor.getUTCMonth() + 1)) {
+        const month = cursor.toISOString().slice(0, 10);
+        for (const status of ['ANDAMENTO', 'CANCELADO', 'CONCLUÍDO', 'EM ESTUDO']) {
+          rows.push({ month, status, count: counts.get(`${month}|${status}`) || 0 });
+        }
+      }
+    }
     return {
       rows,
       columns: [

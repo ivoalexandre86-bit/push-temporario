@@ -36,6 +36,18 @@ router.get('/', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+router.get('/managers', requirePermission(PERMISSIONS.PROJECTS_MANAGE), async (req, res, next) => {
+  try {
+    const items = await db.all(`
+      SELECT u.id, u.name, r.key AS role
+      FROM users u JOIN roles r ON r.id = u.role_id
+      WHERE u.active = 1 AND r.key IN ('ADMIN','PROJECT_MANAGER')
+      ORDER BY u.name
+    `);
+    res.json({ items });
+  } catch (err) { next(err); }
+});
+
 router.get('/:id', async (req, res, next) => {
   try {
     const id = Number(req.params.id);
@@ -51,13 +63,23 @@ router.get('/:id', async (req, res, next) => {
 const upsertSchema = z.object({
   name: z.string().min(1),
   description: z.string().optional().nullable(),
-  managerUserId: z.number().optional().nullable(),
+  managerUserId: z.number().int().positive().optional().nullable(),
   active: z.boolean().optional(),
 });
+
+async function requireActiveProjectManager(userId) {
+  if (!userId) throw new AppError(400, 'VALIDATION_ERROR', 'Selecione um gerente para o projeto.');
+  const manager = await db.get(`
+    SELECT u.id FROM users u JOIN roles r ON r.id = u.role_id
+    WHERE u.id = ? AND u.active = 1 AND r.key IN ('ADMIN','PROJECT_MANAGER')
+  `, userId);
+  if (!manager) throw new AppError(400, 'INVALID_PROJECT_MANAGER', 'Selecione um usuário ativo com papel de administrador ou gerente de projeto.');
+}
 
 router.post('/', requirePermission(PERMISSIONS.PROJECTS_MANAGE), async (req, res, next) => {
   try {
     const body = upsertSchema.parse(req.body);
+    await requireActiveProjectManager(body.managerUserId);
     const existing = await db.get('SELECT id FROM projects WHERE lower(name) = lower(?)', body.name);
     if (existing) throw new AppError(409, 'DUPLICATE', 'Já existe um projeto com este nome.');
     const info = await db.run(
@@ -75,13 +97,14 @@ router.patch('/:id', requirePermission(PERMISSIONS.PROJECTS_MANAGE), async (req,
     const before = await db.get('SELECT * FROM projects WHERE id = ?', id);
     if (!before) throw new AppError(404, 'NOT_FOUND', 'Projeto não encontrado.');
     const body = upsertSchema.partial().parse(req.body);
+    if (body.managerUserId !== undefined) await requireActiveProjectManager(body.managerUserId);
     const merged = { ...before, ...body, manager_user_id: body.managerUserId !== undefined ? body.managerUserId : before.manager_user_id };
     await db.run('UPDATE projects SET name = ?, description = ?, manager_user_id = ?, active = ?, updated_at = ? WHERE id = ?',
       merged.name, merged.description, merged.manager_user_id, merged.active === false || merged.active === 0 ? 0 : 1, new Date().toISOString(), id);
     await auditService.recordDiff({
       entityType: 'PROJECT', entityId: id, projectId: id,
-      before, after: { ...before, ...body },
-      fieldsToTrack: ['name', 'description', 'active'],
+      before, after: { ...before, ...body, manager_user_id: merged.manager_user_id },
+      fieldsToTrack: ['name', 'description', 'active', 'manager_user_id'],
       actor: req.user, req,
     });
     res.json({ ok: true });

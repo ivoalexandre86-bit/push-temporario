@@ -5,6 +5,7 @@ import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { Loading, ErrorState } from '../components/Loading';
 import ActionFormModal from '../components/ActionFormModal';
+import ProjectFormModal from '../components/ProjectFormModal';
 import { formatDateTime, formatHours, formatMonthYear, formatPercent } from '../utils/format';
 import { PERMISSIONS, STATUS_META, CHART_COLORS } from '../utils/constants';
 
@@ -18,6 +19,7 @@ export default function ProjectWorkspace() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [showNew, setShowNew] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
 
   const reload = () => {
     setLoading(true);
@@ -57,6 +59,11 @@ export default function ProjectWorkspace() {
           {hasPermission(PERMISSIONS.ACTIONS_CREATE) && (
             <button onClick={() => setShowNew(true)} className="px-3 py-1.5 rounded-md bg-blue-600 text-white text-sm font-medium hover:bg-blue-700">
               + Nova ação
+            </button>
+          )}
+          {hasPermission(PERMISSIONS.PROJECTS_MANAGE) && (
+            <button onClick={() => setShowEdit(true)} className="px-3 py-1.5 rounded-md border border-gray-300 text-sm text-gray-700 hover:bg-gray-50">
+              Editar projeto
             </button>
           )}
           <button onClick={() => navigate(`/acoes?projectId=${id}`)} className="px-3 py-1.5 rounded-md border border-gray-300 text-sm text-gray-700 hover:bg-gray-50">
@@ -155,6 +162,12 @@ export default function ProjectWorkspace() {
         onClose={() => setShowNew(false)}
         onCreated={reload}
         defaultProjectId={id}
+      />
+      <ProjectFormModal
+        open={showEdit}
+        onClose={() => setShowEdit(false)}
+        onCreated={reload}
+        project={project}
       />
     </div>
   );

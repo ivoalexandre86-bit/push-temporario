@@ -91,6 +91,7 @@ export default function Hours() {
 
           <div className="bg-white border border-[var(--color-border)] rounded-xl p-4">
             <h2 className="text-sm font-semibold text-gray-700 mb-3">Planejado vs. Real por projeto e mês</h2>
+            <p className="text-xs text-gray-500 mb-3">Horas planejadas usam os lançamentos planejados ou a estimativa da ação quando não há lançamentos. Horas reais consideram somente lançamentos aprovados.</p>
             {plannedVsActual?.length === 0 ? <EmptyState /> : (
               <div className="overflow-x-auto scrollbar-thin">
                 <table className="w-full text-sm">
@@ -121,6 +122,7 @@ export default function Hours() {
 
           <div className="bg-white border border-[var(--color-border)] rounded-xl p-4">
             <h2 className="text-sm font-semibold text-gray-700 mb-3">Horas por responsável</h2>
+            <p className="text-xs text-gray-500 mb-3">A soma acompanha os mesmos critérios de aprovação e estimativa exibidos no relatório acima.</p>
             {workload?.length === 0 ? <EmptyState /> : (
               <div className="overflow-x-auto scrollbar-thin">
                 <table className="w-full text-sm">

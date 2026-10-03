@@ -22,6 +22,23 @@ router.use(requirePermission(PERMISSIONS.ACTIONS_VIEW));
 
 const VALID_STATUSES = ['ANDAMENTO', 'CANCELADO', 'CONCLUÍDO', 'EM ESTUDO'];
 const VALID_SORT = new Set(['business_id', 'ref_month', 'start_date', 'due_date', 'completion_date', 'status', 'updated_at', 'project_name', 'area_name']);
+const dateField = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use uma data válida.').refine((value) => {
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}, 'Use uma data válida.');
+
+function validateActionDates(values, changedFields = null) {
+  const { startDate, dueDate, completionDate } = values;
+  const startChanged = !changedFields || changedFields.has('startDate');
+  const dueChanged = !changedFields || changedFields.has('dueDate');
+  const completionChanged = !changedFields || changedFields.has('completionDate');
+  if ((startChanged || dueChanged) && startDate && dueDate && dueDate < startDate) {
+    throw new AppError(400, 'VALIDATION_ERROR', 'O prazo não pode ser anterior à data de início.');
+  }
+  if ((startChanged || completionChanged) && startDate && completionDate && completionDate < startDate) {
+    throw new AppError(400, 'VALIDATION_ERROR', 'A data de conclusão não pode ser anterior à data de início.');
+  }
+}
 
 async function getUserByNameOrCreatePerson(name) {
   if (!name || !name.trim()) return null;
@@ -179,9 +196,9 @@ const createSchema = z.object({
   unassigned: z.boolean().optional(),
   assigneeUserId: z.number().optional().nullable(),
   plannedHours: z.number().nonnegative().optional().nullable(),
-  startDate: z.string().optional().nullable(),
-  dueDate: z.string().optional().nullable(),
-  completionDate: z.string().optional().nullable(),
+  startDate: dateField.optional().nullable(),
+  dueDate: dateField.optional().nullable(),
+  completionDate: dateField.optional().nullable(),
   status: z.enum(VALID_STATUSES),
   observations: z.string().optional().nullable(),
   cancellationReason: z.string().optional().nullable(),
@@ -190,6 +207,7 @@ const createSchema = z.object({
 router.post('/', requirePermission(PERMISSIONS.ACTIONS_CREATE), async (req, res, next) => {
   try {
     const body = createSchema.parse(req.body);
+    validateActionDates(body);
     if (!(await canAccessProject(req.user, body.projectId))) throw new AppError(403, 'FORBIDDEN', 'Você não tem acesso a este projeto.');
     if (!body.responsibleName && !body.assigneeUserId && !body.unassigned) {
       throw new AppError(400, 'VALIDATION_ERROR', 'Informe um responsável ou marque explicitamente como "sem responsável".');
@@ -238,9 +256,9 @@ const updateSchema = z.object({
   unassigned: z.boolean().optional(),
   assigneeUserId: z.number().optional().nullable(),
   plannedHours: z.number().nonnegative().optional().nullable(),
-  startDate: z.string().optional().nullable(),
-  dueDate: z.string().optional().nullable(),
-  completionDate: z.string().optional().nullable(),
+  startDate: dateField.optional().nullable(),
+  dueDate: dateField.optional().nullable(),
+  completionDate: dateField.optional().nullable(),
   status: z.enum(VALID_STATUSES).optional(),
   observations: z.string().optional().nullable(),
   cancellationReason: z.string().optional().nullable(),
@@ -270,6 +288,12 @@ router.patch('/:id', async (req, res, next) => {
 
     const body = updateSchema.parse(req.body);
     if (body.unassigned) { body.responsibleName = null; body.assigneeUserId = null; }
+
+    validateActionDates({
+      startDate: body.startDate !== undefined ? body.startDate : before.start_date,
+      dueDate: body.dueDate !== undefined ? body.dueDate : before.due_date,
+      completionDate: body.completionDate !== undefined ? body.completionDate : before.completion_date,
+    }, new Set(['startDate', 'dueDate', 'completionDate'].filter((field) => body[field] !== undefined)));
 
     const nextStatus = body.status || before.status;
     if (nextStatus === 'CONCLUÍDO') {

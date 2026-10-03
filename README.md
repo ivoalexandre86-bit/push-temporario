@@ -83,7 +83,8 @@ npm run dev         # inicia a API em http://localhost:4000
 
 `npm run setup` executa, em sequência:
 - `npm run migrate` — aplica as migrations SQL (cria todas as tabelas/índices).
-- `npm run seed` — cria os papéis, permissões e 5 usuários de demonstração.
+- `npm run seed` — cria os papéis e permissões; usuários de demonstração são
+  criados apenas fora de produção, salvo ativação explícita.
 - `npm run import:xlsx` — importa `backend/data/seed/PROJETOS.xlsx` (a
   planilha original) para o banco, preservando IDs e sinalizando exceções de
   qualidade de dados.
@@ -122,8 +123,15 @@ necessidade de CORS.
 
 ## Contas de demonstração
 
-Criadas pelo `npm run seed` (senha padrão: `Mudar@123`, configurável via
-`SEED_DEMO_PASSWORD` no `.env`):
+Criadas pelo `npm run seed` somente em desenvolvimento (senha padrão local:
+`Mudar@123`, configurável via `SEED_DEMO_PASSWORD` no `.env`):
+
+Essas contas são apenas para desenvolvimento e avaliação local. A tela de
+login não publica essas credenciais, o seed não cria essas contas em produção
+e a API recusa sua autenticação em produção por padrão. Para uma demonstração
+isolada, `ALLOW_DEMO_USERS=true` libera a autenticação; defina também uma
+`SEED_DEMO_PASSWORD` forte antes de criar as contas. Não habilite essa opção
+no ambiente com dados reais.
 
 | Papel | E-mail |
 |---|---|
@@ -373,16 +381,18 @@ dessas etapas já vêm resolvidas pelo `render.yaml`, marcadas abaixo):
       Se você definir manualmente em outro provedor, gere algo longo e
       aleatório (`openssl rand -base64 48`, por exemplo) e nunca reuse o de
       `.env.example`.
-- [ ] **Senhas dos 5 usuários de demonstração** (`admin@projetos.local` e os
-      demais — ver [Contas de demonstração](#contas-de-demonstração)): a
-      senha padrão `Mudar@123` é pública (está neste README). O
-      `render.yaml` gera uma `SEED_DEMO_PASSWORD` aleatória para o **seed**
-      do banco do Render, mas como os dados reais foram trazidos pelo script
-      de migração (não pelo seed), **os usuários reais migrados mantêm as
-      senhas que já tinham no sistema local** — o que é o comportamento
-      correto/esperado. Ainda assim, é uma boa prática pedir para cada
-      pessoa trocar a própria senha (tela de perfil) no primeiro acesso pelo
-      site.
+- [x] **Contas de demonstração**: seed e login de contas `@projetos.local`
+      ficam bloqueados em produção por padrão. Se alguma conta dessas já
+      existir no banco publicado, ela continua cadastrada, mas não consegue
+      autenticar sem `ALLOW_DEMO_USERS=true`.
+- [ ] **Usuários existentes**: confirme que cada usuário real tem uma senha
+      individual, atualizada e conhecida apenas por ele; desative as contas
+      demonstrativas já existentes pelo painel de usuários.
+- [ ] **Segredo de migração**: o valor antigo de `ADMIN_MIGRATE_TOKEN` foi
+      removido deste arquivo, mas já esteve no histórico do repositório. Exclua
+      essa variável do painel do Render. Se a rota de migração ainda for
+      necessária, gere um token novo e mantenha-o somente nas variáveis
+      privadas do serviço; trate o valor antigo como comprometido.
 - [ ] **Anexos de arquivo**: ver a limitação conhecida na seção anterior
       (disco efêmero no Render) — resolver antes do time depender dessa
       funcionalidade em produção.
