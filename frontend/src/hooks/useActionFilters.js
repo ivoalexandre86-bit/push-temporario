@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
-const ARRAY_KEYS = ['projectId', 'areaId', 'status', 'businessId', 'refMonth', 'year', 'responsible'];
+const ARRAY_KEYS = ['projectId', 'areaId', 'status', 'projectStatus', 'businessId', 'refMonth', 'year', 'responsible'];
 const STORAGE_KEY = 'projetos.filters.v1';
 
 function readSessionDefaults() {

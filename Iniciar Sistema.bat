@@ -2,12 +2,14 @@
 title Sistema de Gestao de Projetos
 setlocal enabledelayedexpansion
 
-set "APP_VERSION=5"
+
+set "APP_VERSION=6"
 set "SRC_DIR=%~dp0"
 set "APP_DIR=%LOCALAPPDATA%\SistemaGestaoProjetos"
 
 echo ============================================
 echo   Sistema de Gestao de Projetos e Acoes
+echo   AMBIENTE DE TESTE / MELHORIA (local)
 echo ============================================
 echo.
 
@@ -39,21 +41,15 @@ if errorlevel 8 (
 cd /d "%APP_DIR%\backend"
 
 if not exist ".env" (
-    copy /y ".env.example" ".env" >nul
     echo.
     echo ============================================================
     echo   PRIMEIRA CONFIGURACAO NECESSARIA
     echo ============================================================
-    echo Este sistema agora usa um banco de dados PostgreSQL
-    echo compartilhado com o site publicado na internet.
-    echo.
-    echo Abra o arquivo abaixo em um editor de texto e cole a URL de
-    echo conexao do banco Postgres do Render no lugar de DATABASE_URL:
-    echo.
-    echo   %APP_DIR%\backend\.env
-    echo.
-    echo Depois de salvar o arquivo, feche esta janela e clique de novo
-    echo no atalho "Iniciar Sistema".
+    echo Este atalho roda o AMBIENTE DE TESTE, com um banco de dados
+    echo PostgreSQL LOCAL neste computador - separado do site publicado
+    echo ^(producao^). Rode primeiro o script "configurar-ambiente-teste.ps1"
+    echo ^(na mesma pasta deste atalho^) para criar o banco local e trazer
+    echo uma copia dos dados reais. Depois disso, clique novamente aqui.
     echo ============================================================
     echo.
     pause
@@ -63,15 +59,15 @@ if not exist ".env" (
 findstr /B /C:"DATABASE_URL=" ".env" >nul
 if errorlevel 1 (
     echo [ERRO] O arquivo .env nao tem a variavel DATABASE_URL configurada.
-    echo Edite "%APP_DIR%\backend\.env" e adicione a URL do banco Postgres do Render.
+    echo Rode "configurar-ambiente-teste.ps1" para configurar o banco local.
     pause
     exit /b 1
 )
 findstr /C:"host.render.com" ".env" >nul
 if not errorlevel 1 (
-    echo [ERRO] DATABASE_URL ainda esta com o valor de exemplo.
-    echo Edite "%APP_DIR%\backend\.env" e cole a URL real do banco Postgres do Render
-    echo ^(Dashboard do Render ^> seu banco Postgres ^> Connect ^> External Database URL^).
+    echo [ERRO] DATABASE_URL esta apontando para o banco de PRODUCAO ^(Render^).
+    echo Este atalho e o AMBIENTE DE TESTE e nao deve usar o banco de producao.
+    echo Rode "configurar-ambiente-teste.ps1" para configurar o banco local.
     pause
     exit /b 1
 )
@@ -153,8 +149,10 @@ cd /d "%APP_DIR%\backend"
 echo [6/6] Tudo pronto.
 echo.
 echo Iniciando o servidor... o navegador abrira automaticamente em alguns segundos.
-echo Este notebook e o site na internet compartilham o mesmo banco de dados,
-echo entao qualquer alteracao feita aqui aparece no site e vice-versa.
+echo Este e o AMBIENTE DE TESTE - usa um banco de dados PostgreSQL LOCAL,
+echo separado do site publicado (producao). Alteracoes feitas aqui NAO
+echo aparecem no site, e vice-versa. Use este ambiente para testar
+echo melhorias com seguranca, sem risco para os dados de producao.
 echo Para ENCERRAR o sistema, feche esta janela.
 echo.
 

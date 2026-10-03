@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { PERMISSIONS, ROLE_LABELS } from '../utils/constants';
+import ChangePasswordModal from './ChangePasswordModal';
 
 const NAV_ITEMS = [
   { to: '/dashboard', label: 'Painel', icon: '📊' },
@@ -17,6 +18,7 @@ export default function Layout() {
   const { user, logout, hasPermission } = useAuth();
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [showChangePassword, setShowChangePassword] = useState(false);
 
   const handleLogout = async () => {
     await logout();
@@ -62,6 +64,9 @@ export default function Layout() {
             <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-semibold" aria-hidden="true">
               {user?.name?.[0]?.toUpperCase() || '?'}
             </div>
+            <button onClick={() => setShowChangePassword(true)} className="px-3 py-1.5 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm hidden sm:inline-block">
+              Alterar senha
+            </button>
             <button onClick={handleLogout} className="ml-1 px-3 py-1.5 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm">
               Sair
             </button>
@@ -71,6 +76,8 @@ export default function Layout() {
           <Outlet />
         </main>
       </div>
+
+      <ChangePasswordModal open={showChangePassword} onClose={() => setShowChangePassword(false)} />
     </div>
   );
 }

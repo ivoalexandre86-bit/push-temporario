@@ -61,6 +61,15 @@ async function buildActionFilters(query, user) {
     echo.areaId = areaIds;
   }
 
+  // --- project status filter (Melhoria 10: filter dashboards by the
+  // project's own workflow status, independent of the action's status) ---
+  const projectStatuses = toArray(query.projectStatus);
+  if (projectStatuses.length) {
+    clauses.push(`p.status IN (${projectStatuses.map(() => '?').join(',')})`);
+    params.push(...projectStatuses);
+    echo.projectStatus = projectStatuses;
+  }
+
   // --- action business id filter ---
   const businessIds = toArray(query.businessId).map(Number).filter(Number.isFinite);
   if (businessIds.length) {

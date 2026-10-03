@@ -48,11 +48,14 @@ router.get('/:id', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+const PROJECT_STATUSES = ['ANDAMENTO', 'CONCLUÍDO', 'CANCELADO', 'PARADO'];
+
 const upsertSchema = z.object({
   name: z.string().min(1),
   description: z.string().optional().nullable(),
   managerUserId: z.number().optional().nullable(),
   active: z.boolean().optional(),
+  status: z.enum(PROJECT_STATUSES).optional(),
 });
 
 router.post('/', requirePermission(PERMISSIONS.PROJECTS_MANAGE), async (req, res, next) => {
@@ -61,8 +64,8 @@ router.post('/', requirePermission(PERMISSIONS.PROJECTS_MANAGE), async (req, res
     const existing = await db.get('SELECT id FROM projects WHERE lower(name) = lower(?)', body.name);
     if (existing) throw new AppError(409, 'DUPLICATE', 'Já existe um projeto com este nome.');
     const info = await db.run(
-      'INSERT INTO projects (name, description, manager_user_id, active) VALUES (?, ?, ?, ?) RETURNING id',
-      body.name, body.description || null, body.managerUserId || null, body.active === false ? 0 : 1
+      'INSERT INTO projects (name, description, manager_user_id, active, status) VALUES (?, ?, ?, ?, ?) RETURNING id',
+      body.name, body.description || null, body.managerUserId || null, body.active === false ? 0 : 1, body.status || 'ANDAMENTO'
     );
     await auditService.record({ entityType: 'PROJECT', entityId: info.lastInsertRowid, actionType: 'CREATE', newValue: body.name, actor: req.user, req, projectId: info.lastInsertRowid });
     res.status(201).json({ id: info.lastInsertRowid });
@@ -75,13 +78,17 @@ router.patch('/:id', requirePermission(PERMISSIONS.PROJECTS_MANAGE), async (req,
     const before = await db.get('SELECT * FROM projects WHERE id = ?', id);
     if (!before) throw new AppError(404, 'NOT_FOUND', 'Projeto não encontrado.');
     const body = upsertSchema.partial().parse(req.body);
-    const merged = { ...before, ...body, manager_user_id: body.managerUserId !== undefined ? body.managerUserId : before.manager_user_id };
-    await db.run('UPDATE projects SET name = ?, description = ?, manager_user_id = ?, active = ?, updated_at = ? WHERE id = ?',
-      merged.name, merged.description, merged.manager_user_id, merged.active === false || merged.active === 0 ? 0 : 1, new Date().toISOString(), id);
+    const merged = {
+      ...before, ...body,
+      manager_user_id: body.managerUserId !== undefined ? body.managerUserId : before.manager_user_id,
+      status: body.status !== undefined ? body.status : before.status,
+    };
+    await db.run('UPDATE projects SET name = ?, description = ?, manager_user_id = ?, active = ?, status = ?, updated_at = ? WHERE id = ?',
+      merged.name, merged.description, merged.manager_user_id, merged.active === false || merged.active === 0 ? 0 : 1, merged.status, new Date().toISOString(), id);
     await auditService.recordDiff({
       entityType: 'PROJECT', entityId: id, projectId: id,
       before, after: { ...before, ...body },
-      fieldsToTrack: ['name', 'description', 'active'],
+      fieldsToTrack: ['name', 'description', 'active', 'status'],
       actor: req.user, req,
     });
     res.json({ ok: true });

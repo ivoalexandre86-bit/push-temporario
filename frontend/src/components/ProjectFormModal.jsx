@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { useToast } from '../context/ToastContext';
+import { PROJECT_STATUSES, PROJECT_STATUS_META } from '../utils/constants';
 
 export default function ProjectFormModal({ open, onClose, onCreated }) {
   const toast = useToast();
@@ -33,6 +34,7 @@ export default function ProjectFormModal({ open, onClose, onCreated }) {
         name: form.name.trim(),
         description: form.description || null,
         managerUserId: form.managerUserId ? Number(form.managerUserId) : null,
+        status: form.status,
       });
       toast.success(`Projeto "${form.name.trim()}" criado com sucesso.`);
       onCreated?.(created);
@@ -68,6 +70,12 @@ export default function ProjectFormModal({ open, onClose, onCreated }) {
             </Field>
           )}
 
+          <Field label="Status">
+            <select value={form.status} onChange={(e) => set({ status: e.target.value })} className="input">
+              {PROJECT_STATUSES.map((s) => <option key={s} value={s}>{PROJECT_STATUS_META[s].label}</option>)}
+            </select>
+          </Field>
+
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" onClick={onClose} className="px-4 py-2 rounded-md text-sm font-medium border border-gray-300 text-gray-700 hover:bg-gray-50">Cancelar</button>
             <button type="submit" disabled={saving} className="px-4 py-2 rounded-md text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-60">
@@ -90,5 +98,5 @@ function Field({ label, children }) {
 }
 
 function emptyForm() {
-  return { name: '', description: '', managerUserId: '' };
+  return { name: '', description: '', managerUserId: '', status: 'ANDAMENTO' };
 }

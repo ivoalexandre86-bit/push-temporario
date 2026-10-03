@@ -55,6 +55,54 @@ router.post('/', requirePermission(PERMISSIONS.HOURS_EDIT), async (req, res, nex
   } catch (err) { next(err); }
 });
 
+const updateSchema = z.object({
+  hours: z.number().positive('As horas devem ser maiores que zero.').optional(),
+  type: z.enum(['PLANNED', 'ACTUAL']).optional(),
+  note: z.string().optional().nullable(),
+  entryDate: z.string().optional(),
+});
+
+router.patch('/:id', requirePermission(PERMISSIONS.HOURS_EDIT), async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const entry = await db.get('SELECT * FROM time_entries WHERE id = ?', id);
+    if (!entry) throw new AppError(404, 'NOT_FOUND', 'Lançamento não encontrado.');
+    const action = await db.get('SELECT * FROM actions WHERE uuid = ?', entry.action_uuid);
+    if (!action || action.deleted_at) throw new AppError(404, 'NOT_FOUND', 'Ação não encontrada.');
+    if (!(await canAccessProject(req.user, action.project_id))) throw new AppError(403, 'FORBIDDEN', 'Sem acesso a esta ação.');
+
+    const canEditAny = ['ADMIN', 'PROJECT_MANAGER'].includes(req.user.role_key);
+    const canEditAssigned = req.user.role_key === 'CONTRIBUTOR' && action.assignee_user_id === req.user.id;
+    if (!canEditAny && !canEditAssigned) throw new AppError(403, 'FORBIDDEN', 'Você só pode editar lançamentos de ações atribuídas a você.');
+
+    const body = updateSchema.parse(req.body);
+    const merged = {
+      hours: body.hours !== undefined ? body.hours : entry.hours,
+      type: body.type !== undefined ? body.type : entry.type,
+      note: body.note !== undefined ? body.note : entry.note,
+      entry_date: body.entryDate !== undefined ? body.entryDate : entry.entry_date,
+    };
+    // A Contributor editing their own entry sends it back for re-approval,
+    // same as a brand-new entry; Admins/PMs editing keep the current status.
+    const approvalStatus = req.user.role_key === 'CONTRIBUTOR' ? 'PENDING' : entry.approval_status;
+
+    await db.run(
+      'UPDATE time_entries SET hours = ?, type = ?, note = ?, entry_date = ?, approval_status = ?, updated_at = ? WHERE id = ?',
+      merged.hours, merged.type, merged.note, merged.entry_date, approvalStatus, nowISO(), id
+    );
+    await db.run('UPDATE actions SET updated_by = ?, updated_at = ? WHERE uuid = ?', req.user.id, nowISO(), action.uuid);
+
+    await auditService.record({
+      entityType: 'TIME_ENTRY', entityId: id, businessId: action.business_id, projectId: action.project_id,
+      actionType: 'UPDATE',
+      oldValue: { hours: entry.hours, type: entry.type, note: entry.note, entryDate: entry.entry_date },
+      newValue: merged, actor: req.user, req,
+    });
+
+    res.json({ ok: true, approvalStatus });
+  } catch (err) { next(err); }
+});
+
 router.patch('/:id/approve', requirePermission(PERMISSIONS.HOURS_APPROVE), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
