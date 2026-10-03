@@ -15,7 +15,7 @@ const auditService = require('../services/auditService');
 const aiService = require('../services/aiService');
 const { toCSV, toXLSXBuffer, dateFmt, numFmt } = require('../services/exportService');
 const { AppError } = require('../middleware/errorHandler');
-const { nowISO } = require('../utils/dates');
+const { nowISO, isValidRefMonth, validateActionDates } = require('../utils/dates');
 
 const router = express.Router();
 router.use(authenticate);
@@ -23,6 +23,21 @@ router.use(requirePermission(PERMISSIONS.ACTIONS_VIEW));
 
 const VALID_STATUSES = ['ANDAMENTO', 'CANCELADO', 'CONCLUÍDO', 'EM ESTUDO'];
 const VALID_SORT = new Set(['business_id', 'ref_month', 'start_date', 'due_date', 'completion_date', 'status', 'updated_at', 'project_name', 'area_name']);
+
+const REF_MONTH_MESSAGE = 'Mês de referência inválido: use o formato mm/aaaa.';
+
+/** Normalizes a validated YYYY-MM / YYYY-MM-DD value to YYYY-MM-01. */
+function normalizeRefMonth(value) {
+  return `${value.slice(0, 7)}-01`;
+}
+
+/** Throws a 400 with every date issue (pt-BR) so nothing invalid is saved. */
+function assertValidActionDates(dates) {
+  const issues = validateActionDates(dates);
+  if (issues.length) {
+    throw new AppError(400, 'VALIDATION_ERROR', issues.map((i) => i.message).join(' '), issues);
+  }
+}
 
 async function getUserByNameOrCreatePerson(name) {
   if (!name || !name.trim()) return null;
@@ -174,7 +189,7 @@ router.get('/:id', async (req, res, next) => {
 const createSchema = z.object({
   projectId: z.number(),
   areaId: z.number(),
-  refMonth: z.string().regex(/^\d{4}-\d{2}(-\d{2})?$/),
+  refMonth: z.string({ required_error: 'Informe o mês de referência.' }).refine(isValidRefMonth, REF_MONTH_MESSAGE),
   description: z.string().min(3, 'Descreva a ação com ao menos 3 caracteres.'),
   responsibleName: z.string().optional().nullable(),
   unassigned: z.boolean().optional(),
@@ -201,10 +216,11 @@ router.post('/', requirePermission(PERMISSIONS.ACTIONS_CREATE), async (req, res,
     if (body.status === 'CANCELADO' && !body.cancellationReason) {
       throw new AppError(400, 'VALIDATION_ERROR', 'Informe o motivo do cancelamento.');
     }
+    assertValidActionDates(body);
 
     const uuid = uuidv4();
     const businessId = await nextBusinessId();
-    const refMonth = body.refMonth.length === 7 ? `${body.refMonth}-01` : body.refMonth;
+    const refMonth = normalizeRefMonth(body.refMonth);
     const personId = await getUserByNameOrCreatePerson(body.responsibleName);
 
     await db.run(`
@@ -233,7 +249,7 @@ router.post('/', requirePermission(PERMISSIONS.ACTIONS_CREATE), async (req, res,
 const updateSchema = z.object({
   projectId: z.number().optional(),
   areaId: z.number().optional(),
-  refMonth: z.string().regex(/^\d{4}-\d{2}(-\d{2})?$/).optional(),
+  refMonth: z.string().refine(isValidRefMonth, REF_MONTH_MESSAGE).optional(),
   description: z.string().min(3).optional(),
   responsibleName: z.string().optional().nullable(),
   unassigned: z.boolean().optional(),
@@ -271,6 +287,7 @@ router.patch('/:id', async (req, res, next) => {
 
     const body = updateSchema.parse(req.body);
     if (body.unassigned) { body.responsibleName = null; body.assigneeUserId = null; }
+    for (const k of ['startDate', 'dueDate', 'completionDate']) if (body[k] === '') body[k] = null;
 
     const nextStatus = body.status || before.status;
     if (nextStatus === 'CONCLUÍDO') {
@@ -283,6 +300,16 @@ router.patch('/:id', async (req, res, next) => {
     }
     if (before.status === 'CONCLUÍDO' && body.status && body.status !== 'CONCLUÍDO' && !body.statusChangeReason) {
       throw new AppError(400, 'VALIDATION_ERROR', 'Informe o motivo para reabrir uma ação concluída.');
+    }
+    // Validate dates only when the request touches one of them, against the
+    // merged (stored + new) values, so legacy imported rows with historical
+    // inconsistencies can still have other fields edited.
+    if (['startDate', 'dueDate', 'completionDate'].some((k) => body[k] !== undefined)) {
+      assertValidActionDates({
+        startDate: body.startDate !== undefined ? body.startDate : before.start_date,
+        dueDate: body.dueDate !== undefined ? body.dueDate : before.due_date,
+        completionDate: body.completionDate !== undefined ? body.completionDate : before.completion_date,
+      });
     }
 
     if (body.responsibleName !== undefined) {
@@ -299,7 +326,7 @@ router.patch('/:id', async (req, res, next) => {
     }
     if (body._personId !== undefined) { sets.push('person_id = ?'); params.push(body._personId); }
     if (body.refMonth) {
-      const rm = body.refMonth.length === 7 ? `${body.refMonth}-01` : body.refMonth;
+      const rm = normalizeRefMonth(body.refMonth);
       sets.push('ref_month = ?, ref_month_raw = ?'); params.push(rm, rm);
     }
     if (!sets.length) return res.json(shapeAction(before));

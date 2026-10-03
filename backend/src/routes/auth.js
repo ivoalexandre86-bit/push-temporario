@@ -7,6 +7,7 @@ const { signAccessToken, setAuthCookie, clearAuthCookie, authenticate } = requir
 const { loginLimiter } = require('../middleware/rateLimiters');
 const auditService = require('../services/auditService');
 const { AppError } = require('../middleware/errorHandler');
+const { DEMO_ACCOUNTS, isDemoEmail, demoLoginAllowed, demoPassword, isProduction } = require('../config');
 
 const router = express.Router();
 
@@ -27,9 +28,30 @@ async function getUserByEmail(email) {
   );
 }
 
+// Public hints for the login screen. Lists the demo accounts only outside
+// production (local development/test), so the production bundle and API
+// never advertise demo credentials. The password is only shown while the
+// development default is in use (SEED_DEMO_PASSWORD not set).
+router.get('/login-hints', (req, res) => {
+  if (isProduction() || !demoLoginAllowed()) return res.json({ demoAccounts: [] });
+  res.json({
+    demoAccounts: DEMO_ACCOUNTS.map((a) => a.email),
+    demoPassword: process.env.SEED_DEMO_PASSWORD ? null : demoPassword(),
+  });
+});
+
 router.post('/login', loginLimiter, async (req, res, next) => {
   try {
     const { email, password } = loginSchema.parse(req.body);
+
+    // Seeded demo accounts are disabled in production unless explicitly
+    // re-enabled (ALLOW_DEMO_LOGIN=true). Same generic response as a wrong
+    // password, so the endpoint does not reveal which accounts exist.
+    if (isDemoEmail(email) && !demoLoginAllowed()) {
+      await auditService.record({ entityType: 'AUTH', entityId: email, actionType: 'LOGIN_BLOCKED_DEMO', actor: null, req });
+      return res.status(401).json({ error: 'INVALID_CREDENTIALS', message: 'E-mail ou senha inválidos.' });
+    }
+
     const user = await getUserByEmail(email);
 
     if (!user) {

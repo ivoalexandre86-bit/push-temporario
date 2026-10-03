@@ -71,6 +71,43 @@ router.get('/', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ------------------------------------------------------------------------
+// Project manager ("gerente do projeto") - stored in projects.manager_user_id
+// (FK to users). Eligible: active users whose role is Administrador or
+// Gerente de Projeto. Same field used by the Projetos grid filter "Gerente".
+// ------------------------------------------------------------------------
+const MANAGER_ROLES = ['ADMIN', 'PROJECT_MANAGER'];
+const MANAGER_REQUIRED_MESSAGE = 'Selecione o gerente do projeto.';
+
+async function loadEligibleManager(userId) {
+  const user = await db.get(`
+    SELECT u.id, u.name, u.active, r.key AS role_key
+    FROM users u JOIN roles r ON r.id = u.role_id WHERE u.id = ?
+  `, userId);
+  if (!user || !user.active || !MANAGER_ROLES.includes(user.role_key)) {
+    throw new AppError(400, 'VALIDATION_ERROR', 'O gerente selecionado deve ser um usuário ativo com papel de Administrador ou Gerente de Projeto.', [{ path: 'managerUserId', message: 'Gerente inválido.' }]);
+  }
+  return user;
+}
+
+/** A Project Manager assigned as manager also gets access scope to the project. */
+async function grantManagerScope(manager, projectId) {
+  if (manager.role_key !== 'PROJECT_MANAGER') return;
+  await db.run('INSERT INTO user_project_scope (user_id, project_id) VALUES (?, ?) ON CONFLICT (user_id, project_id) DO NOTHING', manager.id, projectId);
+}
+
+router.get('/manager-options', requirePermission(PERMISSIONS.PROJECTS_MANAGE), async (req, res, next) => {
+  try {
+    const items = await db.all(`
+      SELECT u.id, u.name, r.key AS role, r.name AS role_name
+      FROM users u JOIN roles r ON r.id = u.role_id
+      WHERE u.active = 1 AND r.key IN (${MANAGER_ROLES.map(() => '?').join(',')})
+      ORDER BY u.name
+    `, ...MANAGER_ROLES);
+    res.json({ items });
+  } catch (err) { next(err); }
+});
+
 router.get('/:id', async (req, res, next) => {
   try {
     const id = Number(req.params.id);
@@ -86,10 +123,16 @@ router.get('/:id', async (req, res, next) => {
 const PROJECT_STATUSES = ['ANDAMENTO', 'CONCLUÍDO', 'CANCELADO', 'PARADO'];
 const PROJECT_PRIORITIES = ['ALTA', 'MEDIA', 'BAIXA'];
 
+const managerIdSchema = z.number({ required_error: MANAGER_REQUIRED_MESSAGE, invalid_type_error: MANAGER_REQUIRED_MESSAGE })
+  .int(MANAGER_REQUIRED_MESSAGE).positive(MANAGER_REQUIRED_MESSAGE);
+
+// Creating a project requires a manager; on updates the manager is optional
+// (inline grid edits send only priority/notes), but once sent it can't be
+// cleared - it must be replaced by another eligible user.
 const upsertSchema = z.object({
-  name: z.string().min(1),
+  name: z.string().trim().min(1, 'Informe o nome do projeto.'),
   description: z.string().optional().nullable(),
-  managerUserId: z.number().optional().nullable(),
+  managerUserId: managerIdSchema,
   active: z.boolean().optional(),
   status: z.enum(PROJECT_STATUSES).optional(),
   priority: z.enum(PROJECT_PRIORITIES).optional().nullable(),
@@ -101,12 +144,17 @@ router.post('/', requirePermission(PERMISSIONS.PROJECTS_MANAGE), async (req, res
     const body = upsertSchema.parse(req.body);
     const existing = await db.get('SELECT id FROM projects WHERE lower(name) = lower(?)', body.name);
     if (existing) throw new AppError(409, 'DUPLICATE', 'Já existe um projeto com este nome.');
+    const manager = await loadEligibleManager(body.managerUserId);
     const info = await db.run(
       'INSERT INTO projects (name, description, manager_user_id, active, status, priority, notes) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id',
-      body.name, body.description || null, body.managerUserId || null, body.active === false ? 0 : 1, body.status || 'ANDAMENTO',
+      body.name, body.description || null, manager.id, body.active === false ? 0 : 1, body.status || 'ANDAMENTO',
       body.priority || null, body.notes?.trim() || null
     );
-    await auditService.record({ entityType: 'PROJECT', entityId: info.lastInsertRowid, actionType: 'CREATE', newValue: body.name, actor: req.user, req, projectId: info.lastInsertRowid });
+    await grantManagerScope(manager, info.lastInsertRowid);
+    await auditService.record({
+      entityType: 'PROJECT', entityId: info.lastInsertRowid, actionType: 'CREATE', actor: req.user, req, projectId: info.lastInsertRowid,
+      newValue: { name: body.name, managerUserId: `${manager.name} (#${manager.id})`, status: body.status || 'ANDAMENTO' },
+    });
     res.status(201).json({ id: info.lastInsertRowid });
   } catch (err) { next(err); }
 });
@@ -117,6 +165,16 @@ router.patch('/:id', requirePermission(PERMISSIONS.PROJECTS_MANAGE), async (req,
     const before = await db.get('SELECT * FROM projects WHERE id = ?', id);
     if (!before) throw new AppError(404, 'NOT_FOUND', 'Projeto não encontrado.');
     const body = upsertSchema.partial().parse(req.body);
+    if ('managerUserId' in (req.body || {}) && body.managerUserId == null) {
+      throw new AppError(400, 'VALIDATION_ERROR', MANAGER_REQUIRED_MESSAGE, [{ path: 'managerUserId', message: MANAGER_REQUIRED_MESSAGE }]);
+    }
+    const manager = body.managerUserId !== undefined && body.managerUserId !== before.manager_user_id
+      ? await loadEligibleManager(body.managerUserId)
+      : null;
+    if (body.name !== undefined && body.name.toLowerCase() !== before.name.toLowerCase()) {
+      const dup = await db.get('SELECT id FROM projects WHERE lower(name) = lower(?) AND id <> ?', body.name, id);
+      if (dup) throw new AppError(409, 'DUPLICATE', 'Já existe um projeto com este nome.');
+    }
     const merged = {
       ...before, ...body,
       manager_user_id: body.managerUserId !== undefined ? body.managerUserId : before.manager_user_id,
@@ -132,6 +190,19 @@ router.patch('/:id', requirePermission(PERMISSIONS.PROJECTS_MANAGE), async (req,
       fieldsToTrack: ['name', 'description', 'active', 'status', 'priority', 'notes'],
       actor: req.user, req,
     });
+    if (manager) {
+      await grantManagerScope(manager, id);
+      const previous = before.manager_user_id
+        ? await db.get('SELECT id, name FROM users WHERE id = ?', before.manager_user_id)
+        : null;
+      // Names (with ids) instead of bare ids, so the audit log is readable.
+      await auditService.record({
+        entityType: 'PROJECT', entityId: id, projectId: id, actionType: 'UPDATE', fieldName: 'manager_user_id',
+        oldValue: previous ? `${previous.name} (#${previous.id})` : null,
+        newValue: `${manager.name} (#${manager.id})`,
+        actor: req.user, req,
+      });
+    }
     res.json({ ok: true });
   } catch (err) { next(err); }
 });

@@ -1,13 +1,13 @@
 const request = require('supertest');
 const { initTestDb, closeTestDb, getDb, getApp, login, withAuth, createProject, createArea, createAction } = require('./helpers');
 
-let app, db, cookie;
+let app, db, cookie, adminId;
 
 beforeAll(async () => {
   await initTestDb();
   db = getDb();
   app = getApp();
-  ({ cookie } = await login(app, 'admin@projetos.local', 'Test@1234'));
+  ({ cookie, user: { id: adminId } } = await login(app, 'admin@projetos.local', 'Test@1234'));
 });
 
 afterAll(async () => {
@@ -16,24 +16,24 @@ afterAll(async () => {
 
 describe('Project status (Melhoria 9 e 10)', () => {
   it('defaults a new project to ANDAMENTO when no status is given', async () => {
-    const res = await withAuth(request(app).post('/api/projects'), cookie).send({ name: 'Projeto Sem Status Informado' });
+    const res = await withAuth(request(app).post('/api/projects'), cookie).send({ name: 'Projeto Sem Status Informado', managerUserId: adminId });
     expect(res.status).toBe(201);
     const row = await db.get('SELECT status FROM projects WHERE id = ?', res.body.id);
     expect(row.status).toBe('ANDAMENTO');
   });
 
   it('accepts an explicit status on creation and rejects an invalid one', async () => {
-    const ok = await withAuth(request(app).post('/api/projects'), cookie).send({ name: 'Projeto Parado Desde o Início', status: 'PARADO' });
+    const ok = await withAuth(request(app).post('/api/projects'), cookie).send({ name: 'Projeto Parado Desde o Início', managerUserId: adminId, status: 'PARADO' });
     expect(ok.status).toBe(201);
     const row = await db.get('SELECT status FROM projects WHERE id = ?', ok.body.id);
     expect(row.status).toBe('PARADO');
 
-    const bad = await withAuth(request(app).post('/api/projects'), cookie).send({ name: 'Projeto Status Invalido', status: 'NAO_EXISTE' });
+    const bad = await withAuth(request(app).post('/api/projects'), cookie).send({ name: 'Projeto Status Invalido', managerUserId: adminId, status: 'NAO_EXISTE' });
     expect(bad.status).toBe(400);
   });
 
   it('updates a project status via PATCH', async () => {
-    const created = await withAuth(request(app).post('/api/projects'), cookie).send({ name: 'Projeto Para Concluir' });
+    const created = await withAuth(request(app).post('/api/projects'), cookie).send({ name: 'Projeto Para Concluir', managerUserId: adminId });
     const patchRes = await withAuth(request(app).patch(`/api/projects/${created.body.id}`), cookie).send({ status: 'CONCLUÍDO' });
     expect(patchRes.status).toBe(200);
     const row = await db.get('SELECT status FROM projects WHERE id = ?', created.body.id);
@@ -43,7 +43,7 @@ describe('Project status (Melhoria 9 e 10)', () => {
   it('filters the dashboard (and action list) by project status', async () => {
     const area = await createArea(db, 'Área Status Projeto');
     const activeProjectId = await createProject(db, 'Projeto Ativo Dashboard');
-    const stoppedProjectRes = await withAuth(request(app).post('/api/projects'), cookie).send({ name: 'Projeto Parado Dashboard', status: 'PARADO' });
+    const stoppedProjectRes = await withAuth(request(app).post('/api/projects'), cookie).send({ name: 'Projeto Parado Dashboard', managerUserId: adminId, status: 'PARADO' });
     const stoppedProjectId = stoppedProjectRes.body.id;
 
     await createAction(db, { projectId: activeProjectId, areaId: area, status: 'ANDAMENTO' });

@@ -10,13 +10,10 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import { Loading, ErrorState } from '../components/Loading';
 import { formatDate, formatDateTime, formatHours, formatPercent, toInputDate } from '../utils/format';
 import { STATUSES, STATUS_META, FLAG_LABELS, IMPORT_EXCEPTION_LABELS, PERMISSIONS } from '../utils/constants';
+import { validateActionDates } from '../utils/dateValidation';
+import AuditValue from '../components/AuditValue';
+import { auditActionLabel, auditFieldLabel } from '../utils/auditLabels';
 
-const AUDIT_FIELD_LABELS = {
-  project_id: 'Projeto', area_id: 'Área/Processo', description: 'Descrição', responsible_name: 'Responsável',
-  assignee_user_id: 'Responsável (usuário)', planned_hours: 'Horas planejadas', start_date: 'Data de início',
-  due_date: 'Prazo', completion_date: 'Data de conclusão', status: 'Status', observations: 'Observações',
-  cancellation_reason: 'Motivo do cancelamento', legacy_hours_confirmed: 'Horas legadas confirmadas',
-};
 
 export default function ActionDetail() {
   const { id } = useParams();
@@ -37,11 +34,14 @@ export default function ActionDetail() {
   const [editEntryForm, setEditEntryForm] = useState({ hours: '', type: 'ACTUAL', note: '' });
   const [savingEntryEdit, setSavingEntryEdit] = useState(false);
   const [rewriteModalOpen, setRewriteModalOpen] = useState(false);
+  const [dateErrors, setDateErrors] = useState({});
+  // Date inputs whose browser value is incomplete/impossible (validity.badInput).
+  const [badDates, setBadDates] = useState([]);
 
   const load = useCallback(() => {
     setLoading(true);
     api.get(`/actions/${id}`)
-      .then((d) => { setAction(d); setEditForm(toEditForm(d)); })
+      .then((d) => { setAction(d); setEditForm(toEditForm(d)); setDateErrors({}); setBadDates([]); })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, [id]);
@@ -60,6 +60,13 @@ export default function ActionDetail() {
   const canApproveHours = hasPermission(PERMISSIONS.HOURS_APPROVE);
   const canComment = hasPermission(PERMISSIONS.COMMENTS_CREATE);
   const canAttach = hasPermission(PERMISSIONS.ATTACHMENTS_CREATE);
+
+  const changeDate = (key, e) => {
+    const { value, validity } = e.target;
+    setEditForm((f) => ({ ...f, [key]: value }));
+    setBadDates((list) => (validity?.badInput ? [...new Set([...list, key])] : list.filter((k) => k !== key)));
+    setDateErrors((errs) => ({ ...errs, [key]: undefined }));
+  };
 
   const applyPatch = async (patch, successMsg) => {
     setSaving(true);
@@ -88,6 +95,12 @@ export default function ActionDetail() {
     if (editForm.completionDate !== toInputDate(action.completionDate)) patch.completionDate = editForm.completionDate || null;
     if (editForm.observations !== (action.observations || '')) patch.observations = editForm.observations || null;
 
+    if (badDates.length || ['startDate', 'dueDate', 'completionDate'].some((k) => k in patch)) {
+      const errs = validateActionDates(editForm, badDates);
+      setDateErrors(errs);
+      if (Object.keys(errs).length) { toast.error('Corrija as datas destacadas antes de salvar.'); return; }
+    }
+
     if (Object.keys(patch).length === 0) { toast.info('Nenhuma alteração para salvar.'); return; }
     await applyPatch(patch, 'Alterações salvas.');
   };
@@ -104,6 +117,14 @@ export default function ActionDetail() {
     }
     if (newStatus === 'CONCLUÍDO' && !editForm.completionDate) {
       toast.error('Defina a data de conclusão antes de marcar como concluída.');
+      return;
+    }
+    if (newStatus === 'CONCLUÍDO' && editForm.completionDate !== toInputDate(action.completionDate)) {
+      // Save the (unsaved) completion date together with the status change.
+      const errs = validateActionDates(editForm, badDates);
+      setDateErrors(errs);
+      if (Object.keys(errs).length) { toast.error('Corrija as datas destacadas antes de salvar.'); return; }
+      applyPatch({ status: newStatus, completionDate: editForm.completionDate }, `Status alterado para ${STATUS_META[newStatus]?.label}.`);
       return;
     }
     applyPatch({ status: newStatus }, `Status alterado para ${STATUS_META[newStatus]?.label}.`);
@@ -293,13 +314,13 @@ export default function ActionDetail() {
           <Section title="Datas e prazos">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <FieldView label="Início" editable={canEdit}>
-                {canEdit ? <input type="date" value={editForm.startDate} onChange={(e) => setEditForm((f) => ({ ...f, startDate: e.target.value }))} className="input" /> : <p>{formatDate(action.startDate)}</p>}
+                {canEdit ? <><input type="date" min={'1900-01-01'} max="2100-12-31" value={editForm.startDate} onChange={(e) => changeDate('startDate', e)} aria-invalid={!!dateErrors.startDate} className="input" />{dateErrors.startDate && <p role="alert" className="text-xs text-red-700 mt-1">{dateErrors.startDate}</p>}</> : <p>{formatDate(action.startDate)}</p>}
               </FieldView>
               <FieldView label="Prazo" editable={canEdit}>
-                {canEdit ? <input type="date" value={editForm.dueDate} onChange={(e) => setEditForm((f) => ({ ...f, dueDate: e.target.value }))} className="input" /> : <p className={action.overdue ? 'text-red-600 font-semibold' : ''}>{formatDate(action.dueDate)}</p>}
+                {canEdit ? <><input type="date" min={editForm.startDate || '1900-01-01'} max="2100-12-31" value={editForm.dueDate} onChange={(e) => changeDate('dueDate', e)} aria-invalid={!!dateErrors.dueDate} className="input" />{dateErrors.dueDate && <p role="alert" className="text-xs text-red-700 mt-1">{dateErrors.dueDate}</p>}</> : <p className={action.overdue ? 'text-red-600 font-semibold' : ''}>{formatDate(action.dueDate)}</p>}
               </FieldView>
               <FieldView label="Data de conclusão" editable={canEdit}>
-                {canEdit ? <input type="date" value={editForm.completionDate} onChange={(e) => setEditForm((f) => ({ ...f, completionDate: e.target.value }))} className="input" /> : <p>{formatDate(action.completionDate)}</p>}
+                {canEdit ? <><input type="date" min={editForm.startDate || '1900-01-01'} max="2100-12-31" value={editForm.completionDate} onChange={(e) => changeDate('completionDate', e)} aria-invalid={!!dateErrors.completionDate} className="input" />{dateErrors.completionDate && <p role="alert" className="text-xs text-red-700 mt-1">{dateErrors.completionDate}</p>}</> : <p>{formatDate(action.completionDate)}</p>}
               </FieldView>
             </div>
           </Section>
@@ -490,11 +511,17 @@ export default function ActionDetail() {
               {action.timeline.map((ev) => (
                 <li key={ev.id} className="text-xs border-l-2 border-gray-200 pl-3">
                   <p className="font-medium text-gray-800">
-                    {AUDIT_FIELD_LABELS[ev.field_name] || ev.action_type}
-                    {ev.field_name && ev.old_value !== null && (
-                      <span className="font-normal text-gray-500"> — de "{truncate(ev.old_value)}" para "{truncate(ev.new_value)}"</span>
-                    )}
+                    {auditActionLabel(ev.action_type)}{ev.field_name ? ` · ${auditFieldLabel(ev.field_name)}` : ''}
                   </p>
+                  {ev.field_name && (ev.old_value !== null || ev.new_value !== null) && (
+                    <div className="text-gray-600 mt-0.5 flex flex-wrap items-start gap-1">
+                      <span>de</span> <AuditValue value={ev.old_value} field={ev.field_name} />
+                      <span>para</span> <AuditValue value={ev.new_value} field={ev.field_name} />
+                    </div>
+                  )}
+                  {!ev.field_name && ev.new_value && (
+                    <div className="text-gray-600 mt-0.5"><AuditValue value={ev.new_value} /></div>
+                  )}
                   <p className="text-gray-400 mt-0.5">{ev.actor_name} · {formatDateTime(ev.created_at)}</p>
                 </li>
               ))}
@@ -557,12 +584,6 @@ function FieldView({ label, children }) {
       <div className="text-sm text-gray-900">{children}</div>
     </div>
   );
-}
-
-function truncate(str, n = 40) {
-  if (str === null || str === undefined) return '—';
-  const s = String(str);
-  return s.length > n ? s.slice(0, n) + '…' : s;
 }
 
 function toEditForm(action) {

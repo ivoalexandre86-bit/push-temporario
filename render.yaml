@@ -64,7 +64,9 @@ services:
       - key: ANTHROPIC_MODEL
         value: claude-sonnet-4-5-20250929
       - key: ADMIN_MIGRATE_TOKEN
-        value: "044638c65a9511cbfb23a20fdb462ccab08be7a30276dd4d"  # TEMPORARY - remove after one-time data migration
+        sync: false  # TEMPORÁRIO - só para a migração única de dados. Defina (ou apague) o valor no painel do Render (Environment); nunca grave o token neste arquivo. Sem a variável, os endpoints /api/admin/* ficam desativados.
+      - key: ALLOW_DEMO_LOGIN
+        value: "false"  # contas de demonstração (*@projetos.local) não entram em produção; mude para "true" só temporariamente
       # CORS_ORIGIN is intentionally left unset: the frontend is served from
       # this same Express server/origin (see backend/src/app.js), so the
       # browser never makes a cross-origin request that needs it. Only set

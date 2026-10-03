@@ -9,8 +9,7 @@ require('dotenv').config();
 const bcrypt = require('bcryptjs');
 const db = require('./connection');
 const { ROLES, ROLE_LABELS_PT, PERMISSIONS, ROLE_PERMISSIONS } = require('../permissions');
-
-const DEMO_PASSWORD = process.env.SEED_DEMO_PASSWORD || 'Mudar@123';
+const { DEMO_ACCOUNTS, demoAccountsSeedAllowed, demoPassword } = require('../config');
 
 async function seedRolesAndPermissions(tx) {
   for (const key of Object.values(ROLES)) {
@@ -36,25 +35,29 @@ async function seedRolesAndPermissions(tx) {
   console.log('[seed] roles & permissions ready');
 }
 
+// Demo accounts are a local development/test convenience. In production
+// they are skipped unless ALLOW_DEMO_ACCOUNTS=true AND SEED_DEMO_PASSWORD is
+// set - there is no default password there. The password is never logged.
 async function seedUsers(tx) {
-  const passwordHash = bcrypt.hashSync(DEMO_PASSWORD, 10);
+  if (!demoAccountsSeedAllowed()) {
+    console.log('[seed] demo users skipped (production; set ALLOW_DEMO_ACCOUNTS=true to create them)');
+    return;
+  }
+  const password = demoPassword();
+  if (!password) {
+    console.log('[seed] demo users skipped (SEED_DEMO_PASSWORD not set)');
+    return;
+  }
+  const passwordHash = bcrypt.hashSync(password, 10);
 
-  const demoUsers = [
-    { name: 'Administrador do Sistema', email: 'admin@projetos.local', role: ROLES.ADMIN },
-    { name: 'Gerente de Projetos', email: 'gerente@projetos.local', role: ROLES.PROJECT_MANAGER },
-    { name: 'Colaborador Demo', email: 'colaborador@projetos.local', role: ROLES.CONTRIBUTOR },
-    { name: 'Visualizador Demo', email: 'visualizador@projetos.local', role: ROLES.VIEWER },
-    { name: 'Auditor Demo', email: 'auditor@projetos.local', role: ROLES.AUDITOR },
-  ];
-
-  for (const u of demoUsers) {
-    const role = await tx.get('SELECT id FROM roles WHERE key = ?', u.role);
+  for (const u of DEMO_ACCOUNTS) {
+    const role = await tx.get('SELECT id FROM roles WHERE key = ?', ROLES[u.role] || u.role);
     await tx.run(
       'INSERT INTO users (name, email, password_hash, role_id, active) VALUES (?, ?, ?, ?, 1) ON CONFLICT (email) DO NOTHING',
       u.name, u.email, passwordHash, role.id
     );
   }
-  console.log(`[seed] demo users ready (password: ${DEMO_PASSWORD})`);
+  console.log('[seed] demo users ready');
 }
 
 async function run() {
@@ -71,4 +74,4 @@ if (require.main === module) {
     .catch((err) => { console.error('[seed] failed:', err); process.exit(1); });
 }
 
-module.exports = { run, DEMO_PASSWORD };
+module.exports = { run };

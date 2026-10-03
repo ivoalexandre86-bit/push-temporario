@@ -3,6 +3,8 @@ import { api, downloadFile } from '../api/client';
 import { useCatalogs } from '../hooks/useCatalogs';
 import { Loading, ErrorState, EmptyState } from '../components/Loading';
 import { formatDateTime } from '../utils/format';
+import AuditValue from '../components/AuditValue';
+import { AUDIT_ENTITY_LABELS, AUDIT_ACTION_LABELS, auditEntityLabel, auditActionLabel, auditFieldLabel } from '../utils/auditLabels';
 
 const ENTITY_TYPES = ['ACTION', 'USER', 'PROJECT', 'AREA', 'TIME_ENTRY', 'AUTH', 'EXPORT'];
 
@@ -49,7 +51,7 @@ export default function Audit() {
           <label className="block text-xs font-medium text-gray-600 mb-1">Entidade</label>
           <select value={filters.entityType} onChange={(e) => set({ entityType: e.target.value })} className="input">
             <option value="">Todas</option>
-            {ENTITY_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+            {ENTITY_TYPES.map((t) => <option key={t} value={t}>{AUDIT_ENTITY_LABELS[t] || t}</option>)}
           </select>
         </div>
         <div>
@@ -65,7 +67,10 @@ export default function Audit() {
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">Tipo de alteração</label>
-          <input value={filters.actionType} onChange={(e) => set({ actionType: e.target.value })} placeholder="UPDATE, CREATE..." className="input" />
+          <select value={filters.actionType} onChange={(e) => set({ actionType: e.target.value })} className="input">
+            <option value="">Todos</option>
+            {Object.entries(AUDIT_ACTION_LABELS).map(([code, label]) => <option key={code} value={code}>{label}</option>)}
+          </select>
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">De</label>
@@ -92,7 +97,7 @@ export default function Audit() {
                     <th className="text-left px-3 py-2 font-semibold text-gray-600">Entidade</th>
                     <th className="text-left px-3 py-2 font-semibold text-gray-600">Ação #</th>
                     <th className="text-left px-3 py-2 font-semibold text-gray-600">Projeto</th>
-                    <th className="text-left px-3 py-2 font-semibold text-gray-600">Tipo</th>
+                    <th className="text-left px-3 py-2 font-semibold text-gray-600">Evento</th>
                     <th className="text-left px-3 py-2 font-semibold text-gray-600">Campo</th>
                     <th className="text-left px-3 py-2 font-semibold text-gray-600">Valor anterior</th>
                     <th className="text-left px-3 py-2 font-semibold text-gray-600">Novo valor</th>
@@ -102,15 +107,15 @@ export default function Audit() {
                 <tbody>
                   {data.items.map((ev) => (
                     <tr key={ev.id} className="border-b border-gray-50">
-                      <td className="px-3 py-2 whitespace-nowrap">{formatDateTime(ev.created_at)}</td>
-                      <td className="px-3 py-2">{ev.entity_type}</td>
-                      <td className="px-3 py-2">{ev.business_id ?? '—'}</td>
-                      <td className="px-3 py-2">{ev.project_name || '—'}</td>
-                      <td className="px-3 py-2">{ev.action_type}</td>
-                      <td className="px-3 py-2">{ev.field_name || '—'}</td>
-                      <td className="px-3 py-2 max-w-[12rem] truncate" title={ev.old_value}>{ev.old_value ?? '—'}</td>
-                      <td className="px-3 py-2 max-w-[12rem] truncate" title={ev.new_value}>{ev.new_value ?? '—'}</td>
-                      <td className="px-3 py-2">{ev.actor_name}</td>
+                      <td className="px-3 py-2 whitespace-nowrap align-top">{formatDateTime(ev.created_at)}</td>
+                      <td className="px-3 py-2 align-top">{auditEntityLabel(ev.entity_type)}</td>
+                      <td className="px-3 py-2 align-top">{ev.business_id ?? '—'}</td>
+                      <td className="px-3 py-2 align-top">{ev.project_name || '—'}</td>
+                      <td className="px-3 py-2 align-top whitespace-nowrap" title={ev.action_type}>{auditActionLabel(ev.action_type)}</td>
+                      <td className="px-3 py-2 align-top">{auditFieldLabel(ev.field_name) || '—'}</td>
+                      <td className="px-3 py-2 align-top max-w-[16rem]"><AuditValue value={ev.old_value} field={ev.field_name} /></td>
+                      <td className="px-3 py-2 align-top max-w-[16rem]"><AuditValue value={ev.new_value} field={ev.field_name} /></td>
+                      <td className="px-3 py-2 align-top whitespace-nowrap" title={ev.ip_address ? `IP: ${ev.ip_address}` : undefined}>{ev.actor_name === 'system' ? 'Sistema' : ev.actor_name}</td>
                     </tr>
                   ))}
                 </tbody>

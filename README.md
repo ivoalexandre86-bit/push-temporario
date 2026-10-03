@@ -129,8 +129,9 @@ necessidade de CORS.
 
 ## Contas de demonstração
 
-Criadas pelo `npm run seed` (senha padrão: `Mudar@123`, configurável via
-`SEED_DEMO_PASSWORD` no `.env`):
+Criadas pelo `npm run seed` **apenas fora de produção** (senha definida em
+`SEED_DEMO_PASSWORD` no `.env`; se vazia, usa a senha padrão de
+desenvolvimento, exibida na tela de login somente no ambiente local/teste):
 
 | Papel | E-mail |
 |---|---|
@@ -139,6 +140,13 @@ Criadas pelo `npm run seed` (senha padrão: `Mudar@123`, configurável via
 | Colaborador | colaborador@projetos.local |
 | Visualizador | visualizador@projetos.local |
 | Auditor | auditor@projetos.local |
+
+**Em produção (`NODE_ENV=production`) essas contas não conseguem entrar** —
+nem com sessão já aberta — e o seed não as cria. Para reabilitar
+temporariamente (ex.: enquanto as contas reais são cadastradas), defina
+`ALLOW_DEMO_LOGIN=true` (login) e/ou `ALLOW_DEMO_ACCOUNTS=true` (seed) nas
+variáveis de ambiente do servidor. A tela de login de produção não exibe
+nenhuma conta nem senha de demonstração.
 
 Por padrão, apenas o Administrador e o Auditor têm acesso irrestrito a todos
 os projetos (é assim que os papéis "globais" foram definidos). Os demais
@@ -248,6 +256,20 @@ importadas**, 0 rejeitadas, 44 com alguma exceção sinalizada para revisão
   status e um responsável — ou a marcação explícita de "sem responsável".
 - Exclusão é lógica (`soft delete`) e restrita a administradores; o histórico
   de auditoria é preservado mesmo após a exclusão.
+- Datas de ação (início, prazo, conclusão, lançamentos de horas) são
+  validadas na tela e na API: formato real `AAAA-MM-DD` (rejeita 30/02,
+  mês 13 etc., anos entre 1900 e 2100), prazo e conclusão não podem ser
+  anteriores ao início. Em ações legadas, a cronologia só é checada quando
+  alguma data é alterada.
+- Todo projeto novo exige um **gerente do projeto**
+  (`projects.manager_user_id`, usuário ativo com papel Administrador ou
+  Gerente de Projeto); quem tem a permissão `projects.manage` pode trocá-lo
+  depois (botão **Editar projeto**), mas não removê-lo. Um Gerente de
+  Projeto designado ganha acesso (escopo) ao projeto. É o mesmo campo usado
+  pelo filtro "Gerente" da tela de Projetos.
+- Relatórios mensais, a tendência do painel e "Horas planejadas vs. reais"
+  mostram todos os meses do período (filtros Ano/Mês, ou do primeiro ao
+  último mês com dados), com zero nos meses sem atividade.
 
 ## Testes automatizados
 
@@ -388,9 +410,11 @@ Os mesmos passos gerais se aplicam sem depender do Render:
    dependências de produção e aplica as migrations no Postgres apontado por
    `DATABASE_URL`.
 3. Defina as variáveis de ambiente de produção (ver `backend/.env.example`):
-   `DATABASE_URL` (obrigatório), `JWT_SECRET` (obrigatório, gerar um valor
-   aleatório longo), `NODE_ENV=production`, `PGSSLMODE=require` (a maioria
-   dos provedores gerenciados exige SSL).
+   `DATABASE_URL` (obrigatório), `JWT_SECRET` (obrigatório, valor aleatório
+   com 32+ caracteres — o servidor **não inicia** em produção sem ele ou com
+   um valor de exemplo), `NODE_ENV=production`, `PGSSLMODE=require` (a maioria
+   dos provedores gerenciados exige SSL). Segredos ficam só nas variáveis de
+   ambiente, nunca em arquivos versionados (`render.yaml`, `.env.example`).
 4. `npm start` — a API sobe e, como `frontend/dist` existe, também serve o
    SPA na mesma origem (ver `SERVE_FRONTEND` em `backend/src/app.js`).
 5. Coloque atrás de HTTPS — os cookies de sessão são marcados `Secure`
@@ -419,6 +443,14 @@ dessas etapas já vêm resolvidas pelo `render.yaml`, marcadas abaixo):
       Se você definir manualmente em outro provedor, gere algo longo e
       aleatório (`openssl rand -base64 48`, por exemplo) e nunca reuse o de
       `.env.example`.
+- [x] **Contas de demonstração bloqueadas em produção**: login e sessões de
+      `*@projetos.local` são recusados com `NODE_ENV=production`, salvo
+      `ALLOW_DEMO_LOGIN=true`. Crie usuários reais (tela **Usuários**) antes
+      de publicar.
+- [ ] **`ADMIN_MIGRATE_TOKEN`**: os endpoints temporários `/api/admin/*` só
+      funcionam com essa variável (32+ caracteres) definida no painel do
+      Render. O valor antigo esteve versionado no `render.yaml` — considere-o
+      exposto: troque-o ou apague a variável quando a migração terminar.
 - [ ] **Senhas dos 5 usuários de demonstração** (`admin@projetos.local` e os
       demais — ver [Contas de demonstração](#contas-de-demonstração)): a
       senha padrão `Mudar@123` é pública (está neste README). O

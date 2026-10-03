@@ -1,14 +1,14 @@
 const jwt = require('jsonwebtoken');
 const db = require('../db/connection');
+const { jwtSecret, isDemoEmail, demoLoginAllowed } = require('../config');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-insecure-secret-change-me';
 const ACCESS_TOKEN_TTL = process.env.ACCESS_TOKEN_TTL || '30m'; // session timeout window
 const ACCESS_COOKIE = 'projetos_at';
 
 function signAccessToken(user) {
   return jwt.sign(
     { sub: user.id, roleKey: user.role_key, name: user.name, email: user.email },
-    JWT_SECRET,
+    jwtSecret(),
     { expiresIn: ACCESS_TOKEN_TTL }
   );
 }
@@ -43,9 +43,9 @@ async function authenticate(req, res, next) {
     return res.status(401).json({ error: 'NOT_AUTHENTICATED', message: 'Sessão não encontrada. Faça login novamente.' });
   }
   try {
-    const payload = jwt.verify(token, JWT_SECRET);
+    const payload = jwt.verify(token, jwtSecret());
     const user = await getUserWithRole(payload.sub);
-    if (!user || !user.active) {
+    if (!user || !user.active || (isDemoEmail(user.email) && !demoLoginAllowed())) {
       return res.status(401).json({ error: 'NOT_AUTHENTICATED', message: 'Usuário inativo ou não encontrado.' });
     }
     req.user = user;
@@ -60,9 +60,9 @@ async function optionalAuthenticate(req, res, next) {
   const token = req.cookies?.[ACCESS_COOKIE] || (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
   if (!token) return next();
   try {
-    const payload = jwt.verify(token, JWT_SECRET);
+    const payload = jwt.verify(token, jwtSecret());
     const user = await getUserWithRole(payload.sub);
-    if (user && user.active) req.user = user;
+    if (user && user.active && !(isDemoEmail(user.email) && !demoLoginAllowed())) req.user = user;
   } catch (_) {
     /* ignore */
   }
@@ -76,5 +76,4 @@ module.exports = {
   authenticate,
   optionalAuthenticate,
   ACCESS_COOKIE,
-  JWT_SECRET,
 };

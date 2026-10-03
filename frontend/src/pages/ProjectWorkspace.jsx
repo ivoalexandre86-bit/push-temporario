@@ -6,8 +6,11 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { Loading, ErrorState } from '../components/Loading';
 import ActionFormModal from '../components/ActionFormModal';
+import ProjectFormModal from '../components/ProjectFormModal';
+import HoursExplainer from '../components/HoursExplainer';
+import { auditActionLabel, auditFieldLabel } from '../utils/auditLabels';
 import StatusChip from '../components/StatusChip';
-import { formatDateTime, formatHours, formatMonthYear, formatPercent } from '../utils/format';
+import { formatDateTime, formatHours, formatMonthYear, formatPercent, formatSignedHours } from '../utils/format';
 import { PERMISSIONS, STATUS_META, CHART_COLORS, PROJECT_STATUSES, PROJECT_STATUS_META } from '../utils/constants';
 
 export default function ProjectWorkspace() {
@@ -21,6 +24,7 @@ export default function ProjectWorkspace() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [showNew, setShowNew] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
 
   const reload = () => {
     setLoading(true);
@@ -81,9 +85,19 @@ export default function ProjectWorkspace() {
             )}
           </div>
           {project.description && <p className="text-sm text-gray-500 mt-1 max-w-xl">{project.description}</p>}
-          <p className="text-xs text-gray-400 mt-1">Gerente: {project.manager_name || 'não definido'}</p>
+          <p className="text-sm text-gray-600 mt-1">
+            Gerente do projeto:{' '}
+            {project.manager_name
+              ? <span className="font-medium text-gray-800">{project.manager_name}</span>
+              : <span className="font-medium text-amber-700">não definido{canManageProject ? ' — clique em “Editar projeto” para definir' : ''}</span>}
+          </p>
         </div>
         <div className="flex items-center gap-2">
+          {canManageProject && (
+            <button onClick={() => setShowEdit(true)} className="px-3 py-1.5 rounded-md border border-gray-300 text-sm text-gray-700 hover:bg-gray-50">
+              Editar projeto
+            </button>
+          )}
           {hasPermission(PERMISSIONS.ACTIONS_CREATE) && (
             <button onClick={() => setShowNew(true)} className="px-3 py-1.5 rounded-md bg-blue-600 text-white text-sm font-medium hover:bg-blue-700">
               + Nova ação
@@ -104,14 +118,16 @@ export default function ProjectWorkspace() {
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
         <Kpi label="% Conclusão" value={formatPercent(dashboard.completionPct)} />
-        <Kpi label="Horas planejadas" value={formatHours(dashboard.hours.planned)} />
-        <Kpi label="Horas reais" value={formatHours(dashboard.hours.actual)} />
-        <Kpi label="Variação" value={formatHours(dashboard.hours.variance)} tone={dashboard.hours.variance > 0 ? 'red' : 'green'} />
+        <Kpi label="Horas planejadas (h)" value={formatHours(dashboard.hours.planned)} />
+        <Kpi label="Horas reais aprovadas (h)" value={formatHours(dashboard.hours.actual)} />
+        <Kpi label="Variação (h) = reais − planejadas" value={formatSignedHours(dashboard.hours.variance)} tone={dashboard.hours.variance > 0 ? 'red' : 'green'} />
       </div>
+
+      <HoursExplainer hours={dashboard.hours} />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
         <div className="bg-white border border-[var(--color-border)] rounded-xl p-4">
-          <h2 className="text-sm font-semibold text-gray-700 mb-2">Indicadores mensais (planejado x real)</h2>
+          <h2 className="text-sm font-semibold text-gray-700 mb-2">Horas por mês de referência (planejadas x reais, em h)</h2>
           <ResponsiveContainer width="100%" height={260}>
             <BarChart data={dashboard.monthlyTrend.map((m) => ({ ...m, monthLabel: formatMonthYear(m.month) }))}>
               <CartesianGrid strokeDasharray="3 3" stroke="#eee" />
@@ -119,8 +135,8 @@ export default function ProjectWorkspace() {
               <YAxis fontSize={12} />
               <Tooltip />
               <Legend />
-              <Bar dataKey="plannedHours" name="Planejadas" fill={CHART_COLORS[0]} radius={[4, 4, 0, 0]} />
-              <Bar dataKey="actualHours" name="Reais" fill={CHART_COLORS[1]} radius={[4, 4, 0, 0]} />
+              <Bar dataKey="plannedHours" name="Planejadas (h)" fill={CHART_COLORS[0]} radius={[4, 4, 0, 0]} />
+              <Bar dataKey="actualHours" name="Reais (h)" fill={CHART_COLORS[1]} radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -170,8 +186,8 @@ export default function ProjectWorkspace() {
           <ul className="space-y-2">
             {activity.map((ev) => (
               <li key={ev.id} className="text-xs border-b border-gray-50 pb-2">
-                <span className="font-medium text-gray-700">{ev.actor_name}</span> — {ev.action_type}
-                {ev.field_name ? ` · ${ev.field_name}` : ''} {ev.business_id ? `(ação #${ev.business_id})` : ''}
+                <span className="font-medium text-gray-700">{ev.actor_name}</span> — {auditActionLabel(ev.action_type)}
+                {ev.field_name ? ` · ${auditFieldLabel(ev.field_name)}` : ''} {ev.business_id ? `(ação #${ev.business_id})` : ''}
                 <span className="text-gray-400"> · {formatDateTime(ev.created_at)}</span>
               </li>
             ))}
@@ -179,6 +195,13 @@ export default function ProjectWorkspace() {
           </ul>
         </div>
       )}
+
+      <ProjectFormModal
+        open={showEdit}
+        project={project}
+        onClose={() => setShowEdit(false)}
+        onSaved={reload}
+      />
 
       <ActionFormModal
         open={showNew}

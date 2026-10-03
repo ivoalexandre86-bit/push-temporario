@@ -9,6 +9,9 @@ class AppError extends Error {
   }
 }
 
+// Start of zod's built-in (English) messages - anything else was written by us.
+const ZOD_DEFAULT_MESSAGE = /^(Required|Expected|Invalid|String must|Number must|Array must|Too (small|big)|Unrecognized|Should be)/;
+
 function notFoundHandler(req, res) {
   res.status(404).json({ error: 'NOT_FOUND', message: 'Recurso não encontrado.' });
 }
@@ -16,9 +19,14 @@ function notFoundHandler(req, res) {
 // eslint-disable-next-line no-unused-vars
 function errorHandler(err, req, res, next) {
   if (err instanceof ZodError) {
+    // Surface the messages written in pt-BR by the schemas (custom refines
+    // and explicit messages); zod's built-in English defaults stay in details.
+    const localized = [...new Set(err.issues
+      .map((i) => i.message)
+      .filter((m) => !ZOD_DEFAULT_MESSAGE.test(m)))];
     return res.status(400).json({
       error: 'VALIDATION_ERROR',
-      message: 'Dados inválidos.',
+      message: localized.length ? `Dados inválidos: ${localized.join(' ')}` : 'Dados inválidos.',
       details: err.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
     });
   }

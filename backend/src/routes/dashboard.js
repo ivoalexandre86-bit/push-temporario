@@ -6,6 +6,7 @@ const { PERMISSIONS } = require('../permissions');
 const { buildActionFilters, BASE_FROM } = require('../services/actionFilters');
 const { todayISODate } = require('../utils/dates');
 const { round2, addDaysISO } = require('../services/actionsService');
+const { resolvePeriodMonths, fillMonths } = require('../services/monthlySeries');
 
 const router = express.Router();
 router.use(authenticate);
@@ -13,7 +14,7 @@ router.use(requirePermission(PERMISSIONS.DASHBOARD_VIEW));
 
 router.get('/', async (req, res, next) => {
   try {
-    const { where, params } = await buildActionFilters(req.query, req.user);
+    const { where, params, filtersEcho } = await buildActionFilters(req.query, req.user);
     const today = todayISODate();
 
     const totals = await db.get(`SELECT COUNT(*) AS total ${BASE_FROM} WHERE ${where}`, ...params);
@@ -51,9 +52,21 @@ router.get('/', async (req, res, next) => {
         AND COALESCE(a.due_date, a.completion_date) BETWEEN ? AND ?
     `, ...params, today, dueSoonDate);
 
+    // Hours basis (same filtered actions for every figure): planned = planned
+    // time entries, or the action's planned-hours field when it has none;
+    // actual = APPROVED actual entries (or the confirmed legacy value). See
+    // the action_hours view (migration 0002).
     const hours = await db.get(`
-      SELECT COALESCE(SUM(ah.planned_hours_total),0) AS planned, COALESCE(SUM(ah.actual_hours_total),0) AS actual
+      SELECT COALESCE(SUM(ah.planned_hours_total),0) AS planned, COALESCE(SUM(ah.actual_hours_total),0) AS actual,
+        SUM(CASE WHEN COALESCE(ah.planned_hours_total,0) = 0 THEN 1 ELSE 0 END) AS without_planned_count,
+        COALESCE(SUM(CASE WHEN COALESCE(ah.planned_hours_total,0) = 0 THEN ah.actual_hours_total ELSE 0 END),0) AS actual_without_planned
       ${BASE_FROM} WHERE ${where}
+    `, ...params);
+    const pendingHours = await db.get(`
+      SELECT COALESCE(SUM(te.hours),0) AS pending
+      FROM time_entries te
+      WHERE te.type = 'ACTUAL' AND te.approval_status = 'PENDING'
+        AND te.action_uuid IN (SELECT a.uuid ${BASE_FROM} WHERE ${where})
     `, ...params);
 
     const monthlyTrend = await db.all(`
@@ -98,10 +111,18 @@ router.get('/', async (req, res, next) => {
         actual: round2(hours.actual),
         variance: round2(hours.actual - hours.planned),
         utilizationPct: hours.planned ? round2((hours.actual / hours.planned) * 100) : null,
+        actionsWithoutPlannedHours: hours.without_planned_count || 0,
+        actualHoursWithoutPlan: round2(hours.actual_without_planned),
+        pendingActualHours: round2(pendingHours.pending),
       },
       byProject: byProject.map((r) => ({ id: r.id, name: r.name, count: r.count, openCount: r.open_count, overdueCount: r.overdue_count, completedCount: r.completed_count, completionPct: r.count ? round2((r.completed_count / r.count) * 100) : 0 })),
       byArea: byArea.map((r) => ({ id: r.id, name: r.name, count: r.count, openCount: r.open_count, overdueCount: r.overdue_count, completedCount: r.completed_count, completionPct: r.count ? round2((r.completed_count / r.count) * 100) : 0 })),
-      monthlyTrend: monthlyTrend.map((r) => ({ month: r.month, created: r.created, completed: r.completed, overdue: r.overdue, plannedHours: round2(r.planned_hours), actualHours: round2(r.actual_hours) })),
+      // Continuous timeline: months of the selected period with no actions appear with zeros.
+      monthlyTrend: fillMonths(
+        monthlyTrend,
+        resolvePeriodMonths(filtersEcho, monthlyTrend.map((r) => r.month)),
+        (month) => ({ month, created: 0, completed: 0, overdue: 0, planned_hours: 0, actual_hours: 0 }),
+      ).map((r) => ({ month: r.month, created: r.created, completed: r.completed, overdue: r.overdue, plannedHours: round2(r.planned_hours), actualHours: round2(r.actual_hours) })),
       workloadByResponsible: workload.map((r) => ({ responsible: r.responsible, count: r.count, openCount: r.open_count, plannedHours: round2(r.planned_hours), actualHours: round2(r.actual_hours) })),
       topOpenProjects: [...byProject].sort((a, b) => b.open_count - a.open_count).slice(0, 5).map((r) => ({ id: r.id, name: r.name, openCount: r.open_count, overdueCount: r.overdue_count })),
       topOverdueAreas: [...byArea].sort((a, b) => b.overdue_count - a.overdue_count).slice(0, 5).map((r) => ({ id: r.id, name: r.name, overdueCount: r.overdue_count })),
