@@ -62,3 +62,12 @@ export const PROJECT_STATUS_META = {
   PARADO: { label: 'Parado', bg: 'var(--status-emestudo-bg)', fg: 'var(--status-emestudo-fg)' },
   CANCELADO: { label: 'Cancelado', bg: 'var(--status-cancelado-bg)', fg: 'var(--status-cancelado-fg)' },
 };
+
+export const PROJECT_PRIORITIES = ['ALTA', 'MEDIA', 'BAIXA'];
+
+export const PROJECT_PRIORITY_META = {
+  ALTA: { label: 'Alta', className: 'text-red-700' },
+  MEDIA: { label: 'Média', className: 'text-amber-700' },
+  BAIXA: { label: 'Baixa', className: 'text-gray-600' },
+};
+
