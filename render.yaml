@@ -31,7 +31,7 @@
 
 databases:
   - name: projetos-db
-    plan: free
+    plan: basic-256mb  # paid (US$6/mo): free Postgres expires after 30 days
     region: oregon
     postgresMajorVersion: "16"
 

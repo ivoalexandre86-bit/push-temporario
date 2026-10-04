@@ -26,6 +26,8 @@ const useSSL = process.env.PGSSLMODE !== 'disable' && !/localhost|127\.0\.0\.1/.
 const pool = new Pool({
   connectionString,
   ssl: useSSL ? { rejectUnauthorized: false } : false,
+  // Fail fast instead of hanging forever when the database is unreachable.
+  connectionTimeoutMillis: 10000,
 });
 
 pool.on('error', (err) => {
