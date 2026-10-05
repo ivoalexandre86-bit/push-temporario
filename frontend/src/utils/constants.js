@@ -71,3 +71,24 @@ export const PROJECT_PRIORITY_META = {
   BAIXA: { label: 'Baixa', className: 'text-gray-600' },
 };
 
+
+// Accent colors for the dark data grids (row border, dots and pills).
+export const GRID_STATUS_COLORS = {
+  ANDAMENTO: '#60a5fa',
+  'EM ESTUDO': '#fbbf24',
+  PARADO: '#fbbf24',
+  'CONCLUÍDO': '#4ade80',
+  CANCELADO: '#f87171',
+};
+
+export const GRID_PRIORITY_COLORS = {
+  ALTA: '#f87171',
+  MEDIA: '#fbbf24',
+  BAIXA: '#94a3b8',
+};
+
+/** Translucent pill background for an accent color (#rrggbb). */
+export function pillStyle(color) {
+  const c = color || '#94a3b8';
+  return { color: c, background: `${c}1f`, borderColor: `${c}55` };
+}

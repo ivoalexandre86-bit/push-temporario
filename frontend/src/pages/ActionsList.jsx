@@ -4,27 +4,40 @@ import { api, downloadFile } from '../api/client';
 import { useActionFilters } from '../hooks/useActionFilters';
 import FilterBar from '../components/FilterBar';
 import StatusChip from '../components/StatusChip';
+import ColumnChooser, { usePersistentColumns, SortHeader, Chevron } from '../components/ColumnChooser';
 import ActionFormModal from '../components/ActionFormModal';
 import { Loading, ErrorState, EmptyState } from '../components/Loading';
 import { formatDate, formatHours, formatMonthYear } from '../utils/format';
-import { FLAG_LABELS, PERMISSIONS } from '../utils/constants';
+import { FLAG_LABELS, PERMISSIONS, STATUS_META, GRID_STATUS_COLORS, pillStyle } from '../utils/constants';
 import { useAuth } from '../context/AuthContext';
 
 const COLUMNS = [
-  { key: 'id', label: 'ID', sortKey: 'business_id', width: 'w-16' },
+  { key: 'id', label: 'ID', sortKey: 'business_id', width: 'w-16', locked: true },
   { key: 'project', label: 'Projeto', sortKey: 'project_name' },
   { key: 'refMonth', label: 'Mês Ref.', sortKey: 'ref_month' },
   { key: 'area', label: 'Área/Processo', sortKey: 'area_name' },
   { key: 'description', label: 'Ação' },
   { key: 'responsibleName', label: 'Responsável' },
-  { key: 'plannedHours', label: 'Horas Plan.' },
-  { key: 'actualHours', label: 'Horas Reais' },
-  { key: 'varianceHours', label: 'Variação' },
+  { key: 'plannedHours', label: 'Horas Plan.', numeric: true },
+  { key: 'actualHours', label: 'Horas Reais', numeric: true },
+  { key: 'varianceHours', label: 'Variação', numeric: true },
   { key: 'startDate', label: 'Início', sortKey: 'start_date' },
   { key: 'dueDate', label: 'Prazo/Fim', sortKey: 'due_date' },
   { key: 'status', label: 'Status', sortKey: 'status' },
   { key: 'updatedAt', label: 'Atualizado', sortKey: 'updated_at' },
 ];
+
+const LOCKED_COLUMNS = COLUMNS.filter((c) => c.locked).map((c) => c.key);
+
+function ActionStatusPill({ status }) {
+  const color = GRID_STATUS_COLORS[status];
+  return (
+    <span className="dg-pill" style={pillStyle(color)}>
+      <span className="dg-dot" style={{ background: color }} aria-hidden="true" />
+      {STATUS_META[status]?.label || status}
+    </span>
+  );
+}
 
 export default function ActionsList() {
   const { hasPermission } = useAuth();
@@ -37,7 +50,7 @@ export default function ActionsList() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showNew, setShowNew] = useState(false);
-  const [visibleCols, setVisibleCols] = useState(COLUMNS.map((c) => c.key));
+  const [visibleCols, setVisibleCols] = usePersistentColumns('acoes.grid.columns', COLUMNS, LOCKED_COLUMNS);
   const navigate = useNavigate();
   const defaultProjectId = filters.projectId?.length === 1 ? filters.projectId[0] : undefined;
   // When this screen was reached filtered down to a single project (e.g. from
@@ -111,34 +124,47 @@ export default function ActionsList() {
       {data && !loading && data.items.length > 0 && (
         <>
           {/* Desktop table */}
-          <div className="hidden md:block bg-white border border-[var(--color-border)] rounded-xl overflow-hidden">
+          <div className="hidden md:block dg">
             <div className="overflow-x-auto scrollbar-thin">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 border-b border-gray-200">
+              <table>
+                <thead>
                   <tr>
                     {cols.map((c) => (
-                      <th key={c.key} className={`text-left px-3 py-2 font-semibold text-gray-600 whitespace-nowrap ${c.width || ''} ${c.sortKey ? 'cursor-pointer select-none' : ''}`} onClick={() => toggleSort(c)}>
-                        {c.label}{sortBy === c.sortKey && (sortDir === 'asc' ? ' ▲' : ' ▼')}
+                      <th key={c.key} scope="col" className={`${c.width || ''} ${c.numeric ? 'num' : ''}`}>
+                        {c.sortKey
+                          ? <SortHeader label={c.label} active={sortBy === c.sortKey} dir={sortDir} onClick={() => toggleSort(c)} />
+                          : c.label}
                       </th>
                     ))}
+                    <th scope="col" className="num" style={{ width: '3rem' }}>
+                      <ColumnChooser columns={COLUMNS} visible={visibleCols} onChange={setVisibleCols} locked={LOCKED_COLUMNS} />
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {data.items.map((item) => (
-                    <tr key={item.uuid} className="border-b border-gray-50 hover:bg-blue-50/40 cursor-pointer" onClick={() => navigate(`/acoes/${item.id}`)}>
-                      {visibleCols.includes('id') && <td className="px-3 py-2 font-mono text-gray-500">#{item.id}</td>}
-                      {visibleCols.includes('project') && <td className="px-3 py-2">{item.project.name}</td>}
-                      {visibleCols.includes('refMonth') && <td className="px-3 py-2 whitespace-nowrap">{formatMonthYear(item.refMonth)}</td>}
-                      {visibleCols.includes('area') && <td className="px-3 py-2">{item.area.name}</td>}
-                      {visibleCols.includes('description') && <td className="px-3 py-2 max-w-xs truncate" title={item.description}>{item.description}</td>}
-                      {visibleCols.includes('responsibleName') && <td className="px-3 py-2">{item.responsibleName || <span className="text-amber-600 text-xs">Sem responsável</span>}</td>}
-                      {visibleCols.includes('plannedHours') && <td className="px-3 py-2 text-right">{formatHours(item.plannedHours)}</td>}
-                      {visibleCols.includes('actualHours') && <td className="px-3 py-2 text-right">{formatHours(item.actualHours)}</td>}
-                      {visibleCols.includes('varianceHours') && <td className={`px-3 py-2 text-right font-medium ${item.varianceHours > 0 ? 'text-red-600' : 'text-gray-700'}`}>{formatHours(item.varianceHours)}</td>}
-                      {visibleCols.includes('startDate') && <td className="px-3 py-2 whitespace-nowrap">{formatDate(item.startDate)}</td>}
-                      {visibleCols.includes('dueDate') && <td className={`px-3 py-2 whitespace-nowrap ${item.overdue ? 'text-red-600 font-semibold' : ''}`}>{formatDate(item.dueDate || item.completionDate)}</td>}
-                      {visibleCols.includes('status') && <td className="px-3 py-2"><StatusChip status={item.status} /></td>}
-                      {visibleCols.includes('updatedAt') && <td className="px-3 py-2 whitespace-nowrap text-gray-500">{formatDate(item.updatedAt)}</td>}
+                    <tr
+                      key={item.uuid}
+                      className="cursor-pointer"
+                      style={{ '--row-accent': GRID_STATUS_COLORS[item.status] || '#334155' }}
+                      onClick={() => navigate(`/acoes/${item.id}`)}
+                    >
+                      {visibleCols.includes('id') && <td className="font-mono muted">#{item.id}</td>}
+                      {visibleCols.includes('project') && <td className="font-medium">{item.project.name}</td>}
+                      {visibleCols.includes('refMonth') && <td className="whitespace-nowrap">{formatMonthYear(item.refMonth)}</td>}
+                      {visibleCols.includes('area') && <td>{item.area.name}</td>}
+                      {visibleCols.includes('description') && <td className="max-w-xs truncate" title={item.description}>{item.description}</td>}
+                      {visibleCols.includes('responsibleName') && <td>{item.responsibleName || <span className="warn text-xs">Sem responsável</span>}</td>}
+                      {visibleCols.includes('plannedHours') && <td className="num">{formatHours(item.plannedHours)}</td>}
+                      {visibleCols.includes('actualHours') && <td className="num">{formatHours(item.actualHours)}</td>}
+                      {visibleCols.includes('varianceHours') && <td className={`num ${item.varianceHours > 0 ? 'danger' : ''}`}>{formatHours(item.varianceHours)}</td>}
+                      {visibleCols.includes('startDate') && <td className="whitespace-nowrap tabular-nums">{formatDate(item.startDate)}</td>}
+                      {visibleCols.includes('dueDate') && <td className={`whitespace-nowrap tabular-nums ${item.overdue ? 'danger' : ''}`}>{formatDate(item.dueDate || item.completionDate)}</td>}
+                      {visibleCols.includes('status') && <td><ActionStatusPill status={item.status} /></td>}
+                      {visibleCols.includes('updatedAt') && <td className="whitespace-nowrap muted tabular-nums">{formatDate(item.updatedAt)}</td>}
+                      <td className="num">
+                        <span className="dg-chevron" aria-hidden="true"><Chevron /></span>
+                      </td>
                     </tr>
                   ))}
                 </tbody>

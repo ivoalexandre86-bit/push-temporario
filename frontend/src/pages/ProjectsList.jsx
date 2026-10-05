@@ -4,11 +4,12 @@ import { api } from '../api/client';
 import { Loading, ErrorState, EmptyState } from '../components/Loading';
 import MultiSelect from '../components/MultiSelect';
 import ProjectFormModal from '../components/ProjectFormModal';
-import StatusChip from '../components/StatusChip';
+import ColumnChooser, { usePersistentColumns, SortHeader, Chevron } from '../components/ColumnChooser';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import {
   PERMISSIONS, PROJECT_STATUSES, PROJECT_STATUS_META, PROJECT_PRIORITIES, PROJECT_PRIORITY_META,
+  GRID_STATUS_COLORS, GRID_PRIORITY_COLORS, pillStyle,
 } from '../utils/constants';
 import { formatDate, formatPercent } from '../utils/format';
 
@@ -25,10 +26,12 @@ const PCT_RANGES = [
 const LIST_KEYS = ['project', 'status', 'manager', 'priority', 'pct'];
 const FLAG_KEYS = ['open', 'overdue', 'soon'];
 
+const COLUMNS_STORAGE_KEY = 'projetos.grid.columns';
+
 const PRIORITY_RANK = { ALTA: 0, MEDIA: 1, BAIXA: 2 };
 
 const COLUMNS = [
-  { key: 'name', label: 'Projeto', get: (p) => p.name.toLowerCase() },
+  { key: 'name', label: 'Projeto', get: (p) => p.name.toLowerCase(), locked: true },
   { key: 'status', label: 'Status do projeto', get: (p) => PROJECT_STATUS_META[p.status]?.label || p.status },
   { key: 'manager', label: 'Gerente', get: (p) => p.manager_name?.toLowerCase() ?? null },
   { key: 'priority', label: 'Prioridade', get: (p) => PRIORITY_RANK[p.priority] ?? null },
@@ -121,21 +124,50 @@ function sortProjects(projects, sortKey, dir) {
   });
 }
 
-function PriorityCell({ project, canEdit, onSave }) {
+function StatusCell({ project, canEdit, onSave }) {
+  const meta = PROJECT_STATUS_META[project.status];
+  const color = GRID_STATUS_COLORS[project.status];
+  const dot = <span className="dg-dot" style={{ background: color }} aria-hidden="true" />;
   if (!canEdit) {
-    const meta = PROJECT_PRIORITY_META[project.priority];
-    return meta ? <span className={`font-medium ${meta.className}`}>{meta.label}</span> : <span className="text-gray-400">—</span>;
+    return <span className="dg-pill" style={pillStyle(color)}>{dot}{meta?.label || project.status}</span>;
   }
   return (
-    <select
-      value={project.priority || ''}
-      onChange={(e) => onSave(project, { priority: e.target.value || null })}
-      aria-label={`Prioridade de ${project.name}`}
-      className={`rounded-md border border-gray-300 bg-white px-2 py-1 text-sm ${PROJECT_PRIORITY_META[project.priority]?.className || 'text-gray-500'}`}
-    >
-      <option value="">—</option>
-      {PROJECT_PRIORITIES.map((p) => <option key={p} value={p}>{PROJECT_PRIORITY_META[p].label}</option>)}
-    </select>
+    <span className="dg-pill" style={pillStyle(color)}>
+      {dot}
+      <select
+        value={project.status}
+        onChange={(e) => onSave(project, { status: e.target.value })}
+        aria-label={`Status de ${project.name}`}
+      >
+        {PROJECT_STATUSES.map((st) => <option key={st} value={st}>{PROJECT_STATUS_META[st].label}</option>)}
+      </select>
+    </span>
+  );
+}
+
+function PriorityCell({ project, canEdit, onSave }) {
+  const color = GRID_PRIORITY_COLORS[project.priority];
+  const meta = PROJECT_PRIORITY_META[project.priority];
+  const dot = <span className="dg-dot" style={{ background: color || '#334155' }} aria-hidden="true" />;
+  if (!canEdit) {
+    return meta
+      ? <span className="inline-flex items-center gap-2 font-medium" style={{ color }}>{dot}{meta.label}</span>
+      : <span className="muted">—</span>;
+  }
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      {dot}
+      <select
+        value={project.priority || ''}
+        onChange={(e) => onSave(project, { priority: e.target.value || null })}
+        aria-label={`Prioridade de ${project.name}`}
+        className="dg-input"
+        style={{ color: color || '#8b95a7' }}
+      >
+        <option value="">—</option>
+        {PROJECT_PRIORITIES.map((pr) => <option key={pr} value={pr}>{PROJECT_PRIORITY_META[pr].label}</option>)}
+      </select>
+    </span>
   );
 }
 
@@ -146,7 +178,7 @@ function NotesCell({ project, canEdit, onSave }) {
   if (!canEdit) {
     return project.notes
       ? <span className="block max-w-[18rem] truncate" title={project.notes}>{project.notes}</span>
-      : <span className="text-gray-400">—</span>;
+      : <span className="muted">—</span>;
   }
 
   const commit = () => {
@@ -173,7 +205,7 @@ function NotesCell({ project, canEdit, onSave }) {
       placeholder="Adicionar observação"
       aria-label={`Observação de ${project.name}`}
       title={project.notes || ''}
-      className="w-56 rounded-md border border-transparent bg-transparent px-2 py-1 text-sm hover:border-gray-300 focus:border-blue-500 focus:bg-white focus:ring-1 focus:ring-blue-500"
+      className="dg-input w-56"
     />
   );
 }
@@ -181,11 +213,11 @@ function NotesCell({ project, canEdit, onSave }) {
 function ProgressCell({ pct }) {
   const value = Math.max(0, Math.min(100, Number(pct) || 0));
   return (
-    <div className="flex items-center gap-2">
-      <div className="w-20 h-1.5 rounded-full bg-gray-200 overflow-hidden" role="progressbar" aria-valuenow={value} aria-valuemin={0} aria-valuemax={100}>
-        <div className="h-full rounded-full bg-green-500" style={{ width: `${value}%` }} />
+    <div className="flex items-center justify-end gap-2">
+      <div className="dg-progress" role="progressbar" aria-valuenow={value} aria-valuemin={0} aria-valuemax={100}>
+        <div style={{ width: `${value}%` }} />
       </div>
-      <span className="text-xs text-gray-600 tabular-nums">{formatPercent(value)}</span>
+      <span className="text-xs tabular-nums w-14 text-right">{formatPercent(value)}</span>
     </div>
   );
 }
@@ -198,6 +230,9 @@ export default function ProjectsList() {
   const [showNew, setShowNew] = useState(false);
   const { filters, setFilters, clearAll, activeCount } = useProjectFilters();
   const canEdit = hasPermission(PERMISSIONS.PROJECTS_MANAGE);
+  const lockedCols = COLUMNS.filter((c) => c.locked).map((c) => c.key);
+  const [visibleCols, setVisibleCols] = usePersistentColumns(COLUMNS_STORAGE_KEY, COLUMNS, lockedCols);
+  const shownColumns = COLUMNS.filter((c) => visibleCols.includes(c.key));
 
   const reload = () => api.get('/projects').then((d) => setProjects(d.items)).catch((e) => setError(e.message));
 
@@ -206,7 +241,7 @@ export default function ProjectsList() {
   }, []);
 
   const saveField = async (project, patch) => {
-    const previous = { priority: project.priority, notes: project.notes };
+    const previous = Object.fromEntries(Object.keys(patch).map((k) => [k, project[k]]));
     setProjects((list) => list.map((p) => (p.id === project.id ? { ...p, ...patch } : p)));
     try {
       await api.patch(`/projects/${project.id}`, patch);
@@ -331,67 +366,77 @@ export default function ProjectsList() {
             </div>
           </div>
 
-          <div className="bg-white border border-[var(--color-border)] rounded-xl overflow-x-auto scrollbar-thin">
-            <table className="min-w-full text-sm">
-              <thead className="bg-gray-50 text-left text-xs font-semibold text-gray-600">
-                <tr>
-                  {COLUMNS.map((c) => {
-                    const active = filters.sort === c.key;
-                    return (
-                      <th
-                        key={c.key}
-                        scope="col"
-                        aria-sort={active ? (filters.dir === 'asc' ? 'ascending' : 'descending') : 'none'}
-                        className={`px-3 py-2 whitespace-nowrap ${c.numeric && c.key !== 'pct' ? 'text-right' : ''}`}
-                      >
-                        <button type="button" onClick={() => toggleSort(c.key)} className="inline-flex items-center gap-1 hover:text-gray-900">
-                          {c.label}
-                          <span aria-hidden="true" className={active ? 'text-gray-700' : 'text-gray-300'}>
-                            {active ? (filters.dir === 'asc' ? '▲' : '▼') : '↕'}
-                          </span>
-                        </button>
-                      </th>
-                    );
-                  })}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {visible.length === 0 && (
+          <div className="dg">
+            <div className="overflow-x-auto scrollbar-thin">
+              <table>
+                <thead>
                   <tr>
-                    <td colSpan={COLUMNS.length} className="px-3 py-8 text-center text-gray-500">
-                      Nenhum projeto corresponde aos filtros.
-                    </td>
+                    {shownColumns.map((c) => {
+                      const active = filters.sort === c.key;
+                      return (
+                        <th
+                          key={c.key}
+                          scope="col"
+                          aria-sort={active ? (filters.dir === 'asc' ? 'ascending' : 'descending') : 'none'}
+                          className={c.numeric ? 'num' : ''}
+                        >
+                          <SortHeader label={c.label} active={active} dir={filters.dir} onClick={() => toggleSort(c.key)} />
+                        </th>
+                      );
+                    })}
+                    <th scope="col" className="num" style={{ width: '3rem' }}>
+                      <ColumnChooser columns={COLUMNS} visible={visibleCols} onChange={setVisibleCols} locked={lockedCols} />
+                    </th>
                   </tr>
-                )}
-                {visible.map((p) => {
-                  const overdueNext = p.next_due_date && p.next_due_date < today;
-                  const soonNext = p.next_due_date && !overdueNext && p.next_due_date <= soonLimit;
-                  return (
-                    <tr key={p.id} className="hover:bg-gray-50">
-                      <td className="px-3 py-2">
-                        <div className="flex items-center gap-2">
-                          <Link to={`/projetos/${p.id}`} className="font-medium text-blue-700 hover:underline">{p.name}</Link>
-                          {!p.active && <span className="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-500">Inativo</span>}
-                        </div>
-                      </td>
-                      <td className="px-3 py-2"><StatusChip status={p.status} metaMap={PROJECT_STATUS_META} /></td>
-                      <td className="px-3 py-2 whitespace-nowrap text-gray-700">{p.manager_name || <span className="text-gray-400">Sem gerente</span>}</td>
-                      <td className="px-3 py-2"><PriorityCell project={p} canEdit={canEdit} onSave={saveField} /></td>
-                      <td className="px-3 py-2 text-right tabular-nums">{p.action_count}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{p.open_count}</td>
-                      <td className={`px-3 py-2 text-right tabular-nums ${p.overdue_count > 0 ? 'text-red-600 font-semibold' : ''}`}>{p.overdue_count}</td>
-                      <td className="px-3 py-2"><ProgressCell pct={p.completion_pct} /></td>
-                      <td className={`px-3 py-2 whitespace-nowrap tabular-nums ${overdueNext ? 'text-red-600 font-semibold' : soonNext ? 'text-amber-700 font-medium' : 'text-gray-700'}`}>
-                        {formatDate(p.next_due_date)}
-                      </td>
-                      <td className="px-3 py-2">
-                        <NotesCell key={p.notes ?? ''} project={p} canEdit={canEdit} onSave={saveField} />
+                </thead>
+                <tbody>
+                  {visible.length === 0 && (
+                    <tr>
+                      <td colSpan={shownColumns.length + 1} className="muted" style={{ textAlign: 'center', padding: '2rem 0.75rem' }}>
+                        Nenhum projeto corresponde aos filtros.
                       </td>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                  )}
+                  {visible.map((p) => {
+                    const overdueNext = p.next_due_date && p.next_due_date < today;
+                    const soonNext = p.next_due_date && !overdueNext && p.next_due_date <= soonLimit;
+                    const cells = {
+                      name: (
+                        <div className="flex items-center gap-2">
+                          <Link to={`/projetos/${p.id}`} className="dg-link whitespace-nowrap">{p.name}</Link>
+                          {!p.active && <span className="dg-pill" style={pillStyle('#94a3b8')}>Inativo</span>}
+                        </div>
+                      ),
+                      status: <StatusCell project={p} canEdit={canEdit} onSave={saveField} />,
+                      manager: p.manager_name
+                        ? <span className="whitespace-nowrap">{p.manager_name}</span>
+                        : <span className="muted whitespace-nowrap">Sem gerente</span>,
+                      priority: <PriorityCell project={p} canEdit={canEdit} onSave={saveField} />,
+                      actions: p.action_count,
+                      open: p.open_count,
+                      overdue: <span className={p.overdue_count > 0 ? 'danger' : ''}>{p.overdue_count}</span>,
+                      pct: <ProgressCell pct={p.completion_pct} />,
+                      nextDue: (
+                        <span className={`whitespace-nowrap tabular-nums ${overdueNext ? 'danger' : soonNext ? 'warn' : p.next_due_date ? '' : 'muted'}`}>
+                          {formatDate(p.next_due_date)}
+                        </span>
+                      ),
+                      notes: <NotesCell key={p.notes ?? ''} project={p} canEdit={canEdit} onSave={saveField} />,
+                    };
+                    return (
+                      <tr key={p.id} style={{ '--row-accent': GRID_STATUS_COLORS[p.status] || '#334155' }}>
+                        {shownColumns.map((c) => <td key={c.key} className={c.numeric ? 'num' : ''}>{cells[c.key]}</td>)}
+                        <td className="num">
+                          <Link to={`/projetos/${p.id}`} className="dg-chevron" aria-label={`Abrir ${p.name}`} title="Abrir projeto">
+                            <Chevron />
+                          </Link>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         </>
       )}

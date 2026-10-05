@@ -6,7 +6,7 @@ import {
 } from 'recharts';
 import { api } from '../api/client';
 import { useActionFilters } from '../hooks/useActionFilters';
-import FilterBar from '../components/FilterBar';
+import FilterMenu from '../components/FilterMenu';
 import KpiCard from '../components/KpiCard';
 import HoursExplainer from '../components/HoursExplainer';
 import SavedViewsMenu from '../components/SavedViewsMenu';
@@ -24,6 +24,7 @@ export default function Dashboard() {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
+    setError('');
     api.get(`/dashboard?${asQueryString}`)
       .then((d) => { if (!cancelled) setData(d); })
       .catch((e) => { if (!cancelled) setError(e.message); })
@@ -41,10 +42,11 @@ export default function Dashboard() {
     <div>
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-xl font-bold text-gray-900">Painel</h1>
-        <SavedViewsMenu filters={filters} onApply={(f) => setFilters(f)} />
+        <div className="flex items-center gap-2">
+          <FilterMenu filters={filters} setFilters={setFilters} clearAll={clearAll} activeCount={activeCount} />
+          <SavedViewsMenu filters={filters} onApply={(f) => setFilters(f)} />
+        </div>
       </div>
-
-      <FilterBar filters={filters} setFilters={setFilters} clearAll={clearAll} activeCount={activeCount} />
 
       {loading && <Loading label="Carregando indicadores..." />}
       {error && !loading && <ErrorState message={error} />}
