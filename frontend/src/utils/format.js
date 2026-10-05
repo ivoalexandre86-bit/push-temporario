@@ -30,6 +30,15 @@ export function formatHours(n) {
   return `${formatNumber(n)}h`;
 }
 
+/** Hours with an explicit sign (+3h / −2,5h), used for variations. */
+export function formatSignedHours(n) {
+  if (n === null || n === undefined) return '—';
+  const v = Number(n);
+  if (v > 0) return `+${formatNumber(v)}h`;
+  if (v < 0) return `−${formatNumber(Math.abs(v))}h`;
+  return '0h';
+}
+
 export function formatPercent(n) {
   if (n === null || n === undefined) return '—';
   return `${formatNumber(n)}%`;

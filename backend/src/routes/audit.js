@@ -3,7 +3,8 @@ const db = require('../db/connection');
 const { authenticate } = require('../middleware/auth');
 const { requirePermission, allowedProjectIds } = require('../middleware/rbac');
 const { PERMISSIONS } = require('../permissions');
-const { toCSV, toXLSXBuffer, dateFmt } = require('../services/exportService');
+const { toCSV, toXLSXBuffer } = require('../services/exportService');
+const { entityLabel, actionLabel, fieldLabel } = require('../services/auditLabels');
 
 const router = express.Router();
 router.use(authenticate);
@@ -46,11 +47,12 @@ router.get('/', async (req, res, next) => {
 
 const AUDIT_COLUMNS = [
   { key: 'created_at', header: 'Data/Hora', format: (v) => new Date(v).toLocaleString('pt-BR') },
-  { key: 'entity_type', header: 'Entidade' },
+  { key: 'entity_type', header: 'Entidade', format: entityLabel },
+  { key: 'entity_id', header: 'ID do Registro' },
   { key: 'business_id', header: 'ID da Ação' },
   { key: 'project_name', header: 'Projeto' },
-  { key: 'action_type', header: 'Tipo de Alteração' },
-  { key: 'field_name', header: 'Campo' },
+  { key: 'action_type', header: 'Evento', format: actionLabel },
+  { key: 'field_name', header: 'Campo', format: fieldLabel },
   { key: 'old_value', header: 'Valor Anterior' },
   { key: 'new_value', header: 'Novo Valor' },
   { key: 'actor_name', header: 'Usuário' },

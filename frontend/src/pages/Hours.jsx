@@ -3,8 +3,9 @@ import { api, downloadFile } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { useActionFilters } from '../hooks/useActionFilters';
 import FilterBar from '../components/FilterBar';
+import HoursExplainer from '../components/HoursExplainer';
 import { Loading, ErrorState, EmptyState } from '../components/Loading';
-import { formatDate, formatHours, formatMonthYear } from '../utils/format';
+import { formatDate, formatHours, formatMonthYear, formatPercent, formatSignedHours } from '../utils/format';
 import { PERMISSIONS } from '../utils/constants';
 
 export default function Hours() {
@@ -13,6 +14,7 @@ export default function Hours() {
   const [plannedVsActual, setPlannedVsActual] = useState(null);
   const [workload, setWorkload] = useState(null);
   const [pending, setPending] = useState([]);
+  const [hoursBasis, setHoursBasis] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
 
@@ -23,9 +25,10 @@ export default function Hours() {
       api.get(`/reports/planned-vs-actual?${asQueryString}`),
       api.get(`/reports/workload?${asQueryString}`),
       hasPermission(PERMISSIONS.HOURS_APPROVE) ? api.get('/time-entries?approvalStatus=PENDING') : Promise.resolve({ items: [] }),
+      hasPermission(PERMISSIONS.DASHBOARD_VIEW) ? api.get(`/dashboard?${asQueryString}`) : Promise.resolve(null),
     ];
     Promise.all(calls)
-      .then(([pva, wl, pend]) => { if (!cancelled) { setPlannedVsActual(pva.rows); setWorkload(wl.rows); setPending(pend.items); } })
+      .then(([pva, wl, pend, dash]) => { if (!cancelled) { setPlannedVsActual(pva.rows); setWorkload(wl.rows); setPending(pend.items); setHoursBasis(dash?.hours || null); } })
       .catch((e) => { if (!cancelled) setError(e.message); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
@@ -50,6 +53,17 @@ export default function Hours() {
       </div>
 
       <FilterBar filters={filters} setFilters={setFilters} clearAll={clearAll} activeCount={activeCount} />
+
+      <HoursExplainer hours={hoursBasis} />
+
+      {hoursBasis && !loading && !error && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+          <Total label="Horas planejadas (h)" value={formatHours(hoursBasis.planned)} />
+          <Total label="Horas reais aprovadas (h)" value={formatHours(hoursBasis.actual)} />
+          <Total label="Variação (h) = reais − planejadas" value={formatSignedHours(hoursBasis.variance)} tone={hoursBasis.variance > 0 ? 'red' : 'default'} />
+          <Total label="Utilização (%) = reais ÷ planejadas" value={hoursBasis.utilizationPct === null ? '—' : formatPercent(hoursBasis.utilizationPct)} />
+        </div>
+      )}
 
       {loading && <Loading />}
       {error && !loading && <ErrorState message={error} />}
@@ -90,8 +104,9 @@ export default function Hours() {
           )}
 
           <div className="bg-white border border-[var(--color-border)] rounded-xl p-4">
-            <h2 className="text-sm font-semibold text-gray-700 mb-3">Planejado vs. Real por projeto e mês</h2>
-            <p className="text-xs text-gray-500 mb-3">Horas planejadas usam os lançamentos planejados ou a estimativa da ação quando não há lançamentos. Horas reais consideram somente lançamentos aprovados.</p>
+            <h2 className="text-sm font-semibold text-gray-700 mb-1">Planejado vs. real por projeto e mês de referência</h2>
+            <p className="text-xs text-gray-500 mb-1">Horas planejadas usam os lançamentos planejados ou a estimativa da ação quando não há lançamentos. Horas reais consideram somente lançamentos aprovados.</p>
+            <p className="text-xs text-gray-500 mb-3">Todos os meses do período aparecem, inclusive os sem horas (0h).</p>
             {plannedVsActual?.length === 0 ? <EmptyState /> : (
               <div className="overflow-x-auto scrollbar-thin">
                 <table className="w-full text-sm">
@@ -99,9 +114,10 @@ export default function Hours() {
                     <tr className="text-left text-gray-500 border-b border-gray-100">
                       <th className="py-1.5 pr-3 font-medium">Projeto</th>
                       <th className="py-1.5 pr-3 font-medium">Mês</th>
-                      <th className="py-1.5 pr-3 font-medium text-right">Planejadas</th>
-                      <th className="py-1.5 pr-3 font-medium text-right">Reais</th>
-                      <th className="py-1.5 pr-3 font-medium text-right">Variação</th>
+                      <th className="py-1.5 pr-3 font-medium text-right">Planejadas (h)</th>
+                      <th className="py-1.5 pr-3 font-medium text-right">Reais (h)</th>
+                      <th className="py-1.5 pr-3 font-medium text-right" title="Horas reais − horas planejadas">Variação (h)</th>
+                      <th className="py-1.5 pr-3 font-medium text-right" title="Horas reais ÷ horas planejadas × 100">Utilização (%)</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -111,7 +127,8 @@ export default function Hours() {
                         <td className="py-1.5 pr-3">{formatMonthYear(r.month)}</td>
                         <td className="py-1.5 pr-3 text-right">{formatHours(r.planned_hours)}</td>
                         <td className="py-1.5 pr-3 text-right">{formatHours(r.actual_hours)}</td>
-                        <td className={`py-1.5 pr-3 text-right font-medium ${r.variance_hours > 0 ? 'text-red-600' : 'text-gray-700'}`}>{formatHours(r.variance_hours)}</td>
+                        <td className={`py-1.5 pr-3 text-right font-medium ${r.variance_hours > 0 ? 'text-red-600' : 'text-gray-700'}`}>{formatSignedHours(r.variance_hours)}</td>
+                        <td className="py-1.5 pr-3 text-right">{r.utilization_pct === null ? '—' : formatPercent(r.utilization_pct)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -131,8 +148,8 @@ export default function Hours() {
                       <th className="py-1.5 pr-3 font-medium">Responsável</th>
                       <th className="py-1.5 pr-3 font-medium text-right">Total de ações</th>
                       <th className="py-1.5 pr-3 font-medium text-right">Em aberto</th>
-                      <th className="py-1.5 pr-3 font-medium text-right">Planejadas</th>
-                      <th className="py-1.5 pr-3 font-medium text-right">Reais</th>
+                      <th className="py-1.5 pr-3 font-medium text-right">Planejadas (h)</th>
+                      <th className="py-1.5 pr-3 font-medium text-right">Reais (h)</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -152,6 +169,15 @@ export default function Hours() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function Total({ label, value, tone = 'default' }) {
+  return (
+    <div className="bg-white border border-[var(--color-border)] rounded-xl p-4">
+      <p className="text-xs font-medium text-gray-500">{label}</p>
+      <p className={`text-xl font-bold ${tone === 'red' ? 'text-red-700' : 'text-gray-900'}`}>{value}</p>
     </div>
   );
 }

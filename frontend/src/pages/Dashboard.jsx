@@ -8,9 +8,10 @@ import { api } from '../api/client';
 import { useActionFilters } from '../hooks/useActionFilters';
 import FilterBar from '../components/FilterBar';
 import KpiCard from '../components/KpiCard';
+import HoursExplainer from '../components/HoursExplainer';
 import SavedViewsMenu from '../components/SavedViewsMenu';
 import { Loading, ErrorState, EmptyState } from '../components/Loading';
-import { formatHours, formatMonthYear, formatNumber, formatPercent } from '../utils/format';
+import { formatHours, formatMonthYear, formatNumber, formatPercent, formatSignedHours } from '../utils/format';
 import { CHART_COLORS, STATUS_META } from '../utils/constants';
 
 export default function Dashboard() {
@@ -61,15 +62,17 @@ export default function Dashboard() {
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
             <KpiCard label="% Conclusão" value={formatPercent(data.completionPct)} />
-            <KpiCard label="Horas planejadas" value={formatHours(data.hours.planned)} />
-            <KpiCard label="Horas reais" value={formatHours(data.hours.actual)} />
+            <KpiCard label="Horas planejadas (h)" value={formatHours(data.hours.planned)} />
+            <KpiCard label="Horas reais aprovadas (h)" value={formatHours(data.hours.actual)} />
             <KpiCard
-              label="Variação de horas"
-              value={formatHours(data.hours.variance)}
+              label="Variação (h) = reais − planejadas"
+              value={formatSignedHours(data.hours.variance)}
               tone={data.hours.variance > 0 ? 'red' : 'green'}
-              sublabel={data.hours.utilizationPct !== null ? `${formatPercent(data.hours.utilizationPct)} de utilização` : undefined}
+              sublabel={data.hours.utilizationPct !== null ? `Utilização: ${formatPercent(data.hours.utilizationPct)} (reais ÷ planejadas)` : 'Utilização: sem horas planejadas'}
             />
           </div>
+
+          <HoursExplainer hours={data.hours} />
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
             <ChartCard title="Ações por status">
@@ -93,7 +96,7 @@ export default function Dashboard() {
               )}
             </ChartCard>
 
-            <ChartCard title="Tendência mensal">
+            <ChartCard title="Tendência mensal (por mês de referência; meses sem ações aparecem com zero)">
               {data.monthlyTrend.length === 0 ? <EmptyState /> : (
                 <ResponsiveContainer width="100%" height={260}>
                   <LineChart data={data.monthlyTrend.map((m) => ({ ...m, monthLabel: formatMonthYear(m.month) }))}>

@@ -12,11 +12,34 @@
 // after the one-time migration is done - it is not meant to stay in
 // production.
 
+const crypto = require('crypto');
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const db = require('../db/connection');
+const { MIN_SECRET_LENGTH } = require('../config');
 
 const router = express.Router();
+
+/**
+ * Validates the bearer token against ADMIN_MIGRATE_TOKEN (read from the
+ * environment only - never hardcode it in tracked files such as
+ * render.yaml). Responds 404 when the variable is unset or too short, so
+ * the endpoints are effectively disabled by default. Constant-time compare.
+ */
+function checkAdminToken(req, res) {
+  const token = process.env.ADMIN_MIGRATE_TOKEN;
+  if (!token || token.length < MIN_SECRET_LENGTH) {
+    res.status(404).json({ error: 'NOT_FOUND' });
+    return false;
+  }
+  const provided = Buffer.from(String(req.get('Authorization') || ''));
+  const expected = Buffer.from(`Bearer ${token}`);
+  if (provided.length !== expected.length || !crypto.timingSafeEqual(provided, expected)) {
+    res.status(401).json({ error: 'UNAUTHORIZED' });
+    return false;
+  }
+  return true;
+}
 
 // TEMPORARY: resets the password of one or more existing users directly in
 // the production database. Needed because the normal "esqueci minha senha"
@@ -27,11 +50,7 @@ const router = express.Router();
 // longer needed.
 router.post('/admin/reset-password', express.json({ limit: '1mb' }), async (req, res, next) => {
   try {
-    const token = process.env.ADMIN_MIGRATE_TOKEN;
-    if (!token) return res.status(404).json({ error: 'NOT_FOUND' });
-    if (req.get('Authorization') !== `Bearer ${token}`) {
-      return res.status(401).json({ error: 'UNAUTHORIZED' });
-    }
+    if (!checkAdminToken(req, res)) return;
 
     const { emails, newPassword } = req.body || {};
     if (!Array.isArray(emails) || !emails.length || typeof newPassword !== 'string' || newPassword.length < 8) {
@@ -80,11 +99,7 @@ const SERIAL_TABLES = [
 
 router.post('/admin/migrate-data', express.json({ limit: '20mb' }), async (req, res, next) => {
   try {
-    const token = process.env.ADMIN_MIGRATE_TOKEN;
-    if (!token) return res.status(404).json({ error: 'NOT_FOUND' });
-    if (req.get('Authorization') !== `Bearer ${token}`) {
-      return res.status(401).json({ error: 'UNAUTHORIZED' });
-    }
+    if (!checkAdminToken(req, res)) return;
 
     const dump = req.body && req.body.tables;
     if (!dump || typeof dump !== 'object') {
@@ -168,11 +183,7 @@ router.post('/admin/migrate-data', express.json({ limit: '20mb' }), async (req, 
 // Remove together with the rest of this file once no longer needed.
 router.post('/admin/run-seed', async (req, res, next) => {
   try {
-    const token = process.env.ADMIN_MIGRATE_TOKEN;
-    if (!token) return res.status(404).json({ error: 'NOT_FOUND' });
-    if (req.get('Authorization') !== `Bearer ${token}`) {
-      return res.status(401).json({ error: 'UNAUTHORIZED' });
-    }
+    if (!checkAdminToken(req, res)) return;
 
     await require('../db/seed').run();
     const count = await db.get('SELECT COUNT(*) AS n FROM users');

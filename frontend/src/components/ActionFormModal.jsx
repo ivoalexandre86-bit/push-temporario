@@ -3,6 +3,7 @@ import { useCatalogs } from '../hooks/useCatalogs';
 import { STATUSES, STATUS_META } from '../utils/constants';
 import { api } from '../api/client';
 import { useToast } from '../context/ToastContext';
+import { isValidRefMonth, validateActionDates } from '../utils/dateValidation';
 
 export default function ActionFormModal({ open, onClose, onCreated, defaultProjectId }) {
   const { projects, areas } = useCatalogs();
@@ -10,11 +11,18 @@ export default function ActionFormModal({ open, onClose, onCreated, defaultProje
   const [form, setForm] = useState(() => emptyForm(defaultProjectId));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [dateErrors, setDateErrors] = useState({});
+  // Date inputs whose browser value is incomplete/impossible (validity.badInput).
+  const [badDates, setBadDates] = useState([]);
 
   // Reset the form (picking up the current default project) every time the
   // modal is opened, so a project the user is "inside of" is always applied.
   useEffect(() => {
-    if (open) setForm(emptyForm(defaultProjectId));
+    if (open) {
+      setForm(emptyForm(defaultProjectId));
+      setDateErrors({});
+      setBadDates([]);
+    }
   }, [open, defaultProjectId]);
 
   if (!open) return null;
@@ -22,6 +30,12 @@ export default function ActionFormModal({ open, onClose, onCreated, defaultProje
   const projectLocked = Boolean(defaultProjectId);
 
   const set = (patch) => setForm((f) => ({ ...f, ...patch }));
+  const setDate = (key, e) => {
+    const { value, validity } = e.target;
+    set({ [key]: value });
+    setBadDates((list) => (validity?.badInput ? [...new Set([...list, key])] : list.filter((k) => k !== key)));
+    setDateErrors((errs) => ({ ...errs, [key]: undefined }));
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -50,6 +64,17 @@ export default function ActionFormModal({ open, onClose, onCreated, defaultProje
       setError('Informe o motivo do cancelamento.');
       return;
     }
+    if (!isValidRefMonth(form.refMonth)) {
+      setError('Mês de referência inválido: use o formato mm/aaaa.');
+      return;
+    }
+    const completionDate = form.status === 'CONCLUÍDO' ? form.completionDate : '';
+    const errs = validateActionDates({ startDate: form.startDate, dueDate: form.dueDate, completionDate }, badDates);
+    setDateErrors(errs);
+    if (Object.keys(errs).length) {
+      setError('Corrija as datas destacadas antes de salvar.');
+      return;
+    }
     setSaving(true);
     try {
       const created = await api.post('/actions', {
@@ -62,7 +87,7 @@ export default function ActionFormModal({ open, onClose, onCreated, defaultProje
         plannedHours: form.plannedHours ? Number(form.plannedHours) : null,
         startDate: form.startDate || null,
         dueDate: form.dueDate || null,
-        completionDate: form.completionDate || null,
+        completionDate: completionDate || null,
         status: form.status,
         observations: form.observations || null,
         cancellationReason: form.cancellationReason || null,
@@ -127,16 +152,19 @@ export default function ActionFormModal({ open, onClose, onCreated, defaultProje
               <input type="number" min="0" step="0.5" value={form.plannedHours} onChange={(e) => set({ plannedHours: e.target.value })} className="input" />
             </Field>
             <Field label="Data de início">
-              <input type="date" value={form.startDate} onChange={(e) => set({ startDate: e.target.value })} className="input" />
+              <input type="date" min="1900-01-01" max="2100-12-31" value={form.startDate} onChange={(e) => setDate('startDate', e)} aria-invalid={!!dateErrors.startDate} className="input" />
+              <FieldError message={dateErrors.startDate} />
             </Field>
             <Field label="Prazo">
-              <input type="date" value={form.dueDate} onChange={(e) => set({ dueDate: e.target.value })} className="input" />
+              <input type="date" min={form.startDate || '1900-01-01'} max="2100-12-31" value={form.dueDate} onChange={(e) => setDate('dueDate', e)} aria-invalid={!!dateErrors.dueDate} className="input" />
+              <FieldError message={dateErrors.dueDate} />
             </Field>
           </div>
 
           {form.status === 'CONCLUÍDO' && (
             <Field label="Data de conclusão *">
-              <input type="date" required value={form.completionDate} onChange={(e) => set({ completionDate: e.target.value })} className="input" />
+              <input type="date" required min={form.startDate || '1900-01-01'} max="2100-12-31" value={form.completionDate} onChange={(e) => setDate('completionDate', e)} aria-invalid={!!dateErrors.completionDate} className="input" />
+              <FieldError message={dateErrors.completionDate} />
             </Field>
           )}
           {form.status === 'CANCELADO' && (
@@ -168,6 +196,11 @@ function Field({ label, children }) {
       {children}
     </div>
   );
+}
+
+function FieldError({ message }) {
+  if (!message) return null;
+  return <p role="alert" className="text-xs text-red-700 mt-1">{message}</p>;
 }
 
 function emptyForm(defaultProjectId) {

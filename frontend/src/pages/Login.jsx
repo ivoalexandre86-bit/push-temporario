@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 
 export default function Login() {
@@ -10,6 +11,13 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  // Demo accounts are listed only when the API reports a non-production
+  // environment; nothing about them is baked into the production bundle.
+  const [hints, setHints] = useState({ demoAccounts: [] });
+
+  useEffect(() => {
+    api.get('/auth/login-hints').then(setHints).catch(() => {});
+  }, []);
 
   const from = location.state?.from?.pathname || '/dashboard';
 
@@ -66,6 +74,14 @@ export default function Login() {
             <Link to="/esqueci-senha" className="text-sm text-blue-600 hover:underline">Esqueci minha senha</Link>
           </div>
         </form>
+        {hints.demoAccounts?.length > 0 && (
+          <div className="mt-4 bg-gray-100 rounded-lg p-3 text-xs text-gray-500 space-y-0.5">
+            <p className="font-semibold text-gray-600">
+              Contas de demonstração (somente ambiente local/teste){hints.demoPassword ? ` — senha: ${hints.demoPassword}` : ' — senha definida em SEED_DEMO_PASSWORD'}:
+            </p>
+            <p>{hints.demoAccounts.join(' · ')}</p>
+          </div>
+        )}
       </div>
     </div>
   );

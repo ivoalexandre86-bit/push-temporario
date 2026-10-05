@@ -105,7 +105,67 @@ function addDaysISO(iso, days) {
   return d.toISOString().slice(0, 10);
 }
 
+// ---------------------------------------------------------------------------
+// Strict validation for user-entered dates (actions, time entries).
+// ---------------------------------------------------------------------------
+
+const MIN_YEAR = 1900;
+const MAX_YEAR = 2100;
+
+/** True only for a real calendar date written as YYYY-MM-DD (rejects 2026-02-30, 2026-13-01...). */
+function isValidISODate(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [y, m, d] = value.split('-').map(Number);
+  if (y < MIN_YEAR || y > MAX_YEAR || m < 1 || m > 12 || d < 1) return false;
+  const daysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return d <= daysInMonth;
+}
+
+/** True for YYYY-MM or a real YYYY-MM-DD date (reference month; normalized to day 01 by the caller). */
+function isValidRefMonth(value) {
+  if (typeof value !== 'string') return false;
+  if (/^\d{4}-\d{2}$/.test(value)) return isValidISODate(`${value}-01`);
+  return isValidISODate(value);
+}
+
+const ACTION_DATE_LABELS = {
+  startDate: 'Data de início',
+  dueDate: 'Prazo',
+  completionDate: 'Data de conclusão',
+};
+
+/**
+ * Validates the date fields of an action (already merged with the stored
+ * values on updates). Returns a list of { path, message } issues in pt-BR;
+ * empty when valid. Empty/null dates are allowed (required-ness is checked
+ * by the status rules).
+ *
+ * Chronology: início <= prazo, início <= conclusão. A conclusão pode ser
+ * posterior ao prazo (ação concluída com atraso).
+ */
+function validateActionDates({ startDate, dueDate, completionDate } = {}) {
+  const issues = [];
+  const values = { startDate, dueDate, completionDate };
+  for (const [key, value] of Object.entries(values)) {
+    if (value === null || value === undefined || value === '') continue;
+    if (!isValidISODate(value)) {
+      issues.push({ path: key, message: `${ACTION_DATE_LABELS[key]} inválida: use uma data real no formato dd/mm/aaaa (entre ${MIN_YEAR} e ${MAX_YEAR}).` });
+    }
+  }
+  if (issues.length) return issues;
+  if (startDate && dueDate && dueDate < startDate) {
+    issues.push({ path: 'dueDate', message: 'O prazo não pode ser anterior à data de início.' });
+  }
+  if (startDate && completionDate && completionDate < startDate) {
+    issues.push({ path: 'completionDate', message: 'A data de conclusão não pode ser anterior à data de início.' });
+  }
+  return issues;
+}
+
 module.exports = {
+  isValidISODate,
+  isValidRefMonth,
+  validateActionDates,
   PT_MONTHS,
   PT_MONTH_NAMES,
   parseRefMonth,

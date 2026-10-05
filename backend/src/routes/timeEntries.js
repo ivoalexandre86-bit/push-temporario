@@ -6,7 +6,9 @@ const { requirePermission, canAccessProject } = require('../middleware/rbac');
 const { PERMISSIONS } = require('../permissions');
 const auditService = require('../services/auditService');
 const { AppError } = require('../middleware/errorHandler');
-const { nowISO } = require('../utils/dates');
+const { nowISO, isValidISODate } = require('../utils/dates');
+
+const ENTRY_DATE_MESSAGE = 'Data do lançamento inválida: use uma data real no formato dd/mm/aaaa.';
 
 const router = express.Router();
 router.use(authenticate);
@@ -20,7 +22,7 @@ async function loadAction(uuidOrId) {
 
 const createSchema = z.object({
   actionId: z.union([z.string(), z.number()]),
-  entryDate: z.string(),
+  entryDate: z.string().refine(isValidISODate, ENTRY_DATE_MESSAGE),
   hours: z.number().positive('As horas devem ser maiores que zero.'),
   type: z.enum(['PLANNED', 'ACTUAL']),
   note: z.string().optional().nullable(),
@@ -59,7 +61,7 @@ const updateSchema = z.object({
   hours: z.number().positive('As horas devem ser maiores que zero.').optional(),
   type: z.enum(['PLANNED', 'ACTUAL']).optional(),
   note: z.string().optional().nullable(),
-  entryDate: z.string().optional(),
+  entryDate: z.string().refine(isValidISODate, ENTRY_DATE_MESSAGE).optional(),
 });
 
 router.patch('/:id', requirePermission(PERMISSIONS.HOURS_EDIT), async (req, res, next) => {
