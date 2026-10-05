@@ -5,6 +5,7 @@ import './index.css';
 import App from './App.jsx';
 import { AuthProvider } from './context/AuthContext.jsx';
 import { ToastProvider } from './context/ToastContext.jsx';
+import { registerServiceWorker } from './registerServiceWorker.js';
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
@@ -17,3 +18,5 @@ createRoot(document.getElementById('root')).render(
     </BrowserRouter>
   </StrictMode>,
 );
+
+registerServiceWorker();
