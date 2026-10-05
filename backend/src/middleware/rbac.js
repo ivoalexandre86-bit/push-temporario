@@ -39,11 +39,20 @@ function hasGlobalScope(user) {
   return GLOBAL_SCOPE_ROLES.has(user.role_key);
 }
 
-/** Returns the set of project IDs a user is allowed to see, or null meaning "all". */
+/**
+ * Returns the set of project IDs a user is allowed to see, or null meaning "all".
+ * Admins (and Auditors) see every project; everyone else sees the projects
+ * they are linked to (user_project_scope), manage (projects.manager_user_id)
+ * or created (projects.created_by_user_id).
+ */
 async function allowedProjectIds(user) {
   if (hasGlobalScope(user)) return null;
-  const rows = await db.all('SELECT project_id FROM user_project_scope WHERE user_id = ?', user.id);
-  return rows.map((r) => r.project_id);
+  const rows = await db.all(`
+    SELECT project_id FROM user_project_scope WHERE user_id = ?
+    UNION
+    SELECT id AS project_id FROM projects WHERE manager_user_id = ? OR created_by_user_id = ?
+  `, user.id, user.id, user.id);
+  return rows.map((r) => r.project_id).sort((a, b) => a - b);
 }
 
 /** Returns the set of area IDs a user is allowed to see, or null meaning "all" (no restriction configured). */

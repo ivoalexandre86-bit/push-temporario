@@ -156,9 +156,9 @@ router.post('/', requirePermission(PERMISSIONS.PROJECTS_MANAGE), async (req, res
     if (existing) throw new AppError(409, 'DUPLICATE', 'Já existe um projeto com este nome.');
     const manager = await loadEligibleManager(body.managerUserId);
     const info = await db.run(
-      'INSERT INTO projects (name, description, manager_user_id, active, status, priority, notes) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id',
+      'INSERT INTO projects (name, description, manager_user_id, active, status, priority, notes, created_by_user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id',
       body.name, body.description || null, manager.id, body.active === false ? 0 : 1, body.status || 'ANDAMENTO',
-      body.priority || null, body.notes?.trim() || null
+      body.priority || null, body.notes?.trim() || null, req.user.id
     );
     await grantManagerScope(manager, info.lastInsertRowid);
     await auditService.record({
@@ -174,6 +174,7 @@ router.patch('/:id', requirePermission(PERMISSIONS.PROJECTS_MANAGE), async (req,
     const id = Number(req.params.id);
     const before = await db.get('SELECT * FROM projects WHERE id = ?', id);
     if (!before) throw new AppError(404, 'NOT_FOUND', 'Projeto não encontrado.');
+    if (!(await canAccessProject(req.user, id))) throw new AppError(403, 'FORBIDDEN', 'Você não tem acesso a este projeto.');
     const body = upsertSchema.partial().parse(req.body);
     if ('managerUserId' in (req.body || {}) && body.managerUserId == null) {
       throw new AppError(400, 'VALIDATION_ERROR', MANAGER_REQUIRED_MESSAGE, [{ path: 'managerUserId', message: MANAGER_REQUIRED_MESSAGE }]);
