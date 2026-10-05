@@ -12,6 +12,7 @@ const { PERMISSIONS } = require('../permissions');
 const { buildActionFilters, BASE_FROM } = require('../services/actionFilters');
 const { shapeAction, SINGLE_ACTION_SELECT, nextBusinessId } = require('../services/actionsService');
 const auditService = require('../services/auditService');
+const aiService = require('../services/aiService');
 const { toCSV, toXLSXBuffer, dateFmt, numFmt } = require('../services/exportService');
 const { AppError } = require('../middleware/errorHandler');
 const { nowISO } = require('../utils/dates');
@@ -344,6 +345,33 @@ router.patch('/:id', async (req, res, next) => {
 
     const row = await loadActionOr404(before.uuid);
     res.json(shapeAction(row));
+  } catch (err) { next(err); }
+});
+
+// ------------------------------------------------------------------------
+// Reescrever descrição com IA (Melhoria 5) — devolve apenas uma SUGESTÃO;
+// quem usa decide se aplica (edita o campo Descrição e salva normalmente).
+// ------------------------------------------------------------------------
+const rewriteSchema = z.object({ text: z.string().min(3).max(8000).optional() });
+
+router.post('/:id/rewrite-description', async (req, res, next) => {
+  try {
+    const before = await loadActionOr404(req.params.id);
+    if (!before || before.deleted_at) throw new AppError(404, 'NOT_FOUND', 'Ação não encontrada.');
+    if (!(await canAccessProject(req.user, before.project_id))) throw new AppError(403, 'FORBIDDEN', 'Você não tem acesso a esta ação.');
+
+    const canEditAny = ['ADMIN', 'PROJECT_MANAGER'].includes(req.user.role_key);
+    const canEditAssigned = req.user.role_key === 'CONTRIBUTOR' && before.assignee_user_id === req.user.id;
+    if (!canEditAny && !canEditAssigned) {
+      throw new AppError(403, 'FORBIDDEN', 'Você só pode editar ações atribuídas a você.');
+    }
+
+    const body = rewriteSchema.parse(req.body || {});
+    const sourceText = (body.text ?? before.description ?? '').trim();
+    if (!sourceText) throw new AppError(400, 'VALIDATION_ERROR', 'Não há texto para reescrever.');
+
+    const suggestion = await aiService.rewriteDescription(sourceText);
+    res.json({ suggestion });
   } catch (err) { next(err); }
 });
 

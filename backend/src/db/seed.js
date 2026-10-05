@@ -2,6 +2,10 @@
 // accounts (one per role) so the system is immediately usable/testable.
 // Business data (projects, areas, actions) comes from scripts/import-xlsx.js,
 // NOT from here - this file only ever creates the access-control skeleton.
+//
+// Loads backend/.env when run directly (e.g. `npm run seed`), same reasoning
+// as in src/db/migrate.js.
+require('dotenv').config();
 const bcrypt = require('bcryptjs');
 const db = require('./connection');
 const { ROLES, ROLE_LABELS_PT, PERMISSIONS, ROLE_PERMISSIONS } = require('../permissions');

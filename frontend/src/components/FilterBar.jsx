@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import MultiSelect from './MultiSelect';
-import { STATUSES, STATUS_META } from '../utils/constants';
+import { STATUSES, STATUS_META, PROJECT_STATUSES, PROJECT_STATUS_META } from '../utils/constants';
 import { useCatalogs } from '../hooks/useCatalogs';
 import { formatMonthYear } from '../utils/format';
 
@@ -30,6 +30,12 @@ export default function FilterBar({ filters, setFilters, clearAll, activeCount }
           options={STATUSES.map((s) => ({ value: s, label: STATUS_META[s].label }))}
           value={filters.status}
           onChange={(v) => setFilters({ status: v })}
+        />
+        <MultiSelect
+          label="Status do Projeto"
+          options={PROJECT_STATUSES.map((s) => ({ value: s, label: PROJECT_STATUS_META[s].label }))}
+          value={filters.projectStatus}
+          onChange={(v) => setFilters({ projectStatus: v })}
         />
         <MultiSelect
           label="Responsável"

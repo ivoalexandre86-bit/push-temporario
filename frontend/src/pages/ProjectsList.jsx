@@ -3,8 +3,9 @@ import { Link } from 'react-router-dom';
 import { api } from '../api/client';
 import { Loading, ErrorState, EmptyState } from '../components/Loading';
 import ProjectFormModal from '../components/ProjectFormModal';
+import StatusChip from '../components/StatusChip';
 import { useAuth } from '../context/AuthContext';
-import { PERMISSIONS } from '../utils/constants';
+import { PERMISSIONS, PROJECT_STATUS_META } from '../utils/constants';
 
 export default function ProjectsList() {
   const { hasPermission } = useAuth();
@@ -37,9 +38,12 @@ export default function ProjectsList() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {projects.map((p) => (
             <Link key={p.id} to={`/projetos/${p.id}`} className="bg-white border border-[var(--color-border)] rounded-xl p-4 hover:shadow-md transition-shadow">
-              <div className="flex items-start justify-between mb-2">
+              <div className="flex items-start justify-between mb-2 gap-2">
                 <h2 className="font-semibold text-gray-900">{p.name}</h2>
-                {!p.active && <span className="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-500">Inativo</span>}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {!p.active && <span className="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-500">Inativo</span>}
+                  <StatusChip status={p.status} metaMap={PROJECT_STATUS_META} />
+                </div>
               </div>
               {p.description && <p className="text-sm text-gray-500 mb-2 line-clamp-2">{p.description}</p>}
               <p className="text-xs text-gray-400">{p.action_count} ações · Gerente: {p.manager_name || 'não definido'}</p>

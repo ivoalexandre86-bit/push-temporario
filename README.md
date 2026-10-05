@@ -20,9 +20,10 @@ dados fictícios de negócio.
 6. [Importação da planilha original](#importação-da-planilha-original)
 7. [Regras de negócio implementadas](#regras-de-negócio-implementadas)
 8. [Testes automatizados](#testes-automatizados)
-9. [Deploy em produção](#deploy-em-produção)
-10. [Segurança antes de publicar](#segurança-antes-de-publicar)
-11. [Limitações conhecidas e próximos passos](#limitações-conhecidas-e-próximos-passos)
+9. [Ambientes: teste local vs produção](#ambientes-teste-local-vs-produção)
+10. [Deploy em produção](#deploy-em-produção)
+11. [Segurança antes de publicar](#segurança-antes-de-publicar)
+12. [Limitações conhecidas e próximos passos](#limitações-conhecidas-e-próximos-passos)
 
 ## Arquitetura e stack
 
@@ -39,9 +40,12 @@ projeto-app/
   chamada (`db.get/all/run/exec`, placeholders posicionais `?`) usada em todo
   o código. Migrations SQL versionadas (`backend/src/db/migrations`), chaves
   estrangeiras, índices e constraints `UNIQUE`/`CHECK`.
-- **Banco único e compartilhado**: o mesmo Postgres é usado tanto pelo site
-  publicado (Render) quanto pelo atalho local `Iniciar Sistema.bat` — os dois
-  sempre enxergam os mesmos dados, não existem duas cópias do banco.
+- **Dois ambientes, dois bancos separados**: o site publicado (Render) é o
+  ambiente de **produção**, com seu próprio Postgres gerenciado. O atalho
+  local `Iniciar Sistema.bat` roda o ambiente de **teste/melhoria**, com um
+  Postgres **local** neste computador (uma cópia dos dados reais, mas
+  independente) — ver [Ambientes: teste local vs
+  produção](#ambientes-teste-local-vs-produção).
 - Autenticação por sessão via cookie `httpOnly` + JWT (expiração de 30 min,
   configurável), com fallback Bearer token para clientes de API.
 - RBAC (controle de acesso por papel) com escopo adicional por projeto/área,
@@ -66,9 +70,11 @@ projeto-app/
 
 ## Como rodar localmente
 
-Pré-requisitos: Node.js 20+, npm, e acesso a um banco PostgreSQL (o mesmo
-banco compartilhado do Render — recomendado — ou um Postgres local próprio
-para desenvolvimento isolado).
+Pré-requisitos: Node.js 20+, npm, e acesso a um banco PostgreSQL. Para rodar
+o **ambiente de teste/melhoria** pronto para uso, com uma cópia dos dados
+reais, veja [Ambientes: teste local vs produção](#ambientes-teste-local-vs-produção)
+— esta seção é para quem quer rodar o backend/frontend manualmente (sem o
+atalho `Iniciar Sistema.bat`), apontando para qualquer Postgres à sua escolha.
 
 ### 1. Backend (API + banco de dados)
 
@@ -89,11 +95,12 @@ npm run dev         # inicia a API em http://localhost:4000
   planilha original) para o banco, preservando IDs e sinalizando exceções de
   qualidade de dados.
 
-⚠️ Se `DATABASE_URL` já apontar para o banco compartilhado de produção (o
-mesmo usado por `Iniciar Sistema.bat` e pelo site), **não rode `npm run
-setup`/`import:xlsx` nesse banco** — ele já tem os dados reais. `npm run
-setup` é para preparar um banco novo/vazio (ex.: um Postgres local só para
-desenvolvimento). Para recomeçar um banco de testes do zero:
+⚠️ Se `DATABASE_URL` apontar para o banco de **produção** (Render), **não
+rode `npm run setup`/`import:xlsx` nesse banco** — ele já tem os dados reais.
+`npm run setup` é para preparar um banco novo/vazio (ex.: um Postgres local
+só para desenvolvimento, separado do banco de produção — ver [Ambientes:
+teste local vs produção](#ambientes-teste-local-vs-produção)). Para
+recomeçar um banco de testes do zero:
 `CONFIRM_RESET=SIM node scripts/reset-db.js --force && npm run setup`.
 
 ### 2. Frontend (SPA)
@@ -282,13 +289,54 @@ mesmo dialeto SQL usado em produção:
   cabeçalhos em português, metadados de filtro, evento de auditoria de
   exportação.
 
+## Ambientes: teste local vs produção
+
+O sistema roda em **dois ambientes independentes**, cada um com seu próprio
+banco de dados PostgreSQL — de propósito, para que melhorias possam ser
+testadas sem nenhum risco para os dados reais em uso pelo time:
+
+| | Ambiente de **teste/melhoria** | Ambiente de **produção** |
+|---|---|---|
+| Onde roda | Este computador (`Iniciar Sistema.bat`) | Site publicado no Render |
+| Banco de dados | PostgreSQL **local** (só neste computador) | Postgres gerenciado do Render |
+| Dados | Uma **cópia** dos dados reais (criada uma vez pelo `configurar-ambiente-teste.ps1`); muda de forma independente a partir daí | Os dados reais em uso pelo time |
+| Quem acessa | Só você, neste computador | Qualquer pessoa com o link do site |
+| Como atualizar código | Editar os arquivos e rodar `Iniciar Sistema.bat` de novo | `git push` para o GitHub → Render rebuilda e publica automaticamente |
+
+### Configurando o ambiente de teste (uma vez)
+
+1. Instale o PostgreSQL neste computador (uma única vez).
+2. Rode `configurar-ambiente-teste.ps1` (nesta mesma pasta) — ele cria o
+   banco local `projetos_test`, gera o `.env` do ambiente de teste e copia
+   os dados reais (`projetos.db`) para esse banco.
+3. A partir daí, use `Iniciar Sistema.bat` normalmente para abrir o sistema
+   de teste em `http://localhost:4000`.
+
+O banco de teste local e o banco de produção **nunca se comunicam** —
+alterações feitas em um não aparecem no outro. Para "resetar" o ambiente de
+teste e trazer uma cópia mais recente dos dados reais, rode
+`configurar-ambiente-teste.ps1` de novo (ele reaproveita o banco `projetos_test`
+já existente; para começar do zero, apague o banco antes com
+`CONFIRM_RESET=SIM node scripts/reset-db.js --force` dentro de
+`%LOCALAPPDATA%\SistemaGestaoProjetos\backend`).
+
+### Fluxo de trabalho recomendado
+
+1. Teste e desenvolva melhorias no ambiente local (`Iniciar Sistema.bat`),
+   à vontade, sem risco.
+2. Quando estiver satisfeito com uma mudança, publique o código no GitHub
+   (`git add`, `git commit`, `git push`) — isso **não** envia os dados do
+   banco local, só o código.
+3. O Render detecta o novo commit e republica o site de produção
+   automaticamente com o código atualizado, mas mantendo o banco de dados
+   de produção como está (os dados reais não são afetados pelo deploy).
+
 ## Deploy em produção
 
 O sistema roda como um único serviço web Node.js (a mesma API Express serve
 tanto `/api/*` quanto o SPA React já compilado) e usa PostgreSQL como banco
-de dados — o mesmo banco é compartilhado entre o site publicado e o atalho
-local `Iniciar Sistema.bat`, para nunca haver duas cópias divergentes dos
-dados.
+de dados de produção, no Render — completamente separado do banco local
+usado pelo atalho `Iniciar Sistema.bat` (ver seção anterior).
 
 ### Publicando no Render (recomendado — `render.yaml` já configurado)
 
@@ -333,13 +381,11 @@ usuários reais (com as senhas reais) já vêm junto na migração; rodar o seed
 depois é inofensivo (ele também usa `ON CONFLICT DO NOTHING`), só
 desnecessário.
 
-### Conectando o notebook (`Iniciar Sistema.bat`) ao mesmo banco
+### Ambiente local (`Iniciar Sistema.bat`)
 
-Na primeira execução após esta atualização, o atalho copia
-`backend/.env.example` para `.env` e para, pedindo para você colar a
-**mesma** `DATABASE_URL` do Render nesse arquivo. A partir daí, o notebook e
-o site sempre leem/gravam no mesmo banco — uma ação criada em um aparece
-imediatamente no outro.
+O atalho local **não** usa o banco de produção — ver [Ambientes: teste local
+vs produção](#ambientes-teste-local-vs-produção) para configurá-lo com seu
+próprio banco PostgreSQL local.
 
 ### Rodando em outro provedor (Railway, Fly.io, VM própria, etc.)
 

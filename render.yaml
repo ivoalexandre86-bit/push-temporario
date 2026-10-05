@@ -57,6 +57,10 @@ services:
         generateValue: true
       - key: ACCESS_TOKEN_TTL
         value: 30m
+      - key: ANTHROPIC_API_KEY
+        sync: false  # Melhoria 5 (reescrever com IA) - cole a chave manualmente no painel do Render (Environment); gere em console.anthropic.com
+      - key: ANTHROPIC_MODEL
+        value: claude-sonnet-4-5-20250929
       # Demo users are disabled in production unless explicitly enabled for an
       # isolated demo deployment. Never commit demo passwords or migration tokens.
       # CORS_ORIGIN is intentionally left unset: the frontend is served from

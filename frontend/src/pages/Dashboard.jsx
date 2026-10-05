@@ -8,6 +8,7 @@ import { api } from '../api/client';
 import { useActionFilters } from '../hooks/useActionFilters';
 import FilterBar from '../components/FilterBar';
 import KpiCard from '../components/KpiCard';
+import SavedViewsMenu from '../components/SavedViewsMenu';
 import { Loading, ErrorState, EmptyState } from '../components/Loading';
 import { formatHours, formatMonthYear, formatNumber, formatPercent } from '../utils/format';
 import { CHART_COLORS, STATUS_META } from '../utils/constants';
@@ -39,6 +40,7 @@ export default function Dashboard() {
     <div>
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-xl font-bold text-gray-900">Painel</h1>
+        <SavedViewsMenu filters={filters} onApply={(f) => setFilters(f)} />
       </div>
 
       <FilterBar filters={filters} setFilters={setFilters} clearAll={clearAll} activeCount={activeCount} />

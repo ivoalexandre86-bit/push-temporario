@@ -53,3 +53,12 @@ export const ROLE_LABELS = {
 };
 
 export const CHART_COLORS = ['#1d4ed8', '#15803d', '#b45309', '#b91c1c', '#7c3aed', '#0891b2', '#c2410c', '#4d7c0f'];
+
+export const PROJECT_STATUSES = ['ANDAMENTO', 'CONCLUÍDO', 'PARADO', 'CANCELADO'];
+
+export const PROJECT_STATUS_META = {
+  ANDAMENTO: { label: 'Em andamento', bg: 'var(--status-andamento-bg)', fg: 'var(--status-andamento-fg)' },
+  'CONCLUÍDO': { label: 'Concluído', bg: 'var(--status-concluido-bg)', fg: 'var(--status-concluido-fg)' },
+  PARADO: { label: 'Parado', bg: 'var(--status-emestudo-bg)', fg: 'var(--status-emestudo-fg)' },
+  CANCELADO: { label: 'Cancelado', bg: 'var(--status-cancelado-bg)', fg: 'var(--status-cancelado-fg)' },
+};

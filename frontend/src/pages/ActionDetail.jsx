@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { useCatalogs } from '../hooks/useCatalogs';
 import StatusChip from '../components/StatusChip';
+import RewriteDescriptionModal from '../components/RewriteDescriptionModal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { Loading, ErrorState } from '../components/Loading';
 import { formatDate, formatDateTime, formatHours, formatPercent, toInputDate } from '../utils/format';
@@ -31,7 +32,11 @@ export default function ActionDetail() {
   const [saving, setSaving] = useState(false);
   const [confirm, setConfirm] = useState(null); // { type, payload }
   const [commentBody, setCommentBody] = useState('');
-  const [timeEntryForm, setTimeEntryForm] = useState({ entryDate: '', hours: '', type: 'ACTUAL', note: '' });
+  const [timeEntryForm, setTimeEntryForm] = useState({ hours: '', type: 'ACTUAL', note: '' });
+  const [editingEntryId, setEditingEntryId] = useState(null);
+  const [editEntryForm, setEditEntryForm] = useState({ hours: '', type: 'ACTUAL', note: '' });
+  const [savingEntryEdit, setSavingEntryEdit] = useState(false);
+  const [rewriteModalOpen, setRewriteModalOpen] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -139,13 +144,13 @@ export default function ActionDetail() {
     try {
       await api.post('/time-entries', {
         actionId: action.id,
-        entryDate: timeEntryForm.entryDate,
+        entryDate: new Date().toISOString().slice(0, 10),
         hours: Number(timeEntryForm.hours),
         type: timeEntryForm.type,
         note: timeEntryForm.note || null,
       });
       toast.success('Lançamento de horas registrado.');
-      setTimeEntryForm({ entryDate: '', hours: '', type: 'ACTUAL', note: '' });
+      setTimeEntryForm({ hours: '', type: 'ACTUAL', note: '' });
       load();
     } catch (err) { toast.error(err.message); }
   };
@@ -155,6 +160,33 @@ export default function ActionDetail() {
       await api.patch(`/time-entries/${entryId}/approve`, { approve });
       load();
     } catch (err) { toast.error(err.message); }
+  };
+
+  const startEditEntry = (entry) => {
+    setEditingEntryId(entry.id);
+    setEditEntryForm({ hours: String(entry.hours), type: entry.type, note: entry.note || '' });
+  };
+
+  const cancelEditEntry = () => {
+    setEditingEntryId(null);
+  };
+
+  const saveEditEntry = async (entryId) => {
+    setSavingEntryEdit(true);
+    try {
+      await api.patch(`/time-entries/${entryId}`, {
+        hours: Number(editEntryForm.hours),
+        type: editEntryForm.type,
+        note: editEntryForm.note || null,
+      });
+      toast.success('Lançamento de horas atualizado.');
+      setEditingEntryId(null);
+      load();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setSavingEntryEdit(false);
+    }
   };
 
   const handleAttachmentUpload = async (e) => {
@@ -241,11 +273,30 @@ export default function ActionDetail() {
             </div>
           </Section>
 
-          <Section title="Descrição da ação">
+          <Section
+            title="Descrição da ação"
+            action={canEdit && (
+              <button
+                type="button"
+                onClick={() => setRewriteModalOpen(true)}
+                className="text-xs font-medium px-2 py-1 rounded-md border border-purple-300 text-purple-700 hover:bg-purple-50"
+              >
+                ✨ Revisão
+              </button>
+            )}
+          >
             {canEdit ? (
               <textarea rows={5} value={editForm.description} onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))} className="input whitespace-pre-wrap" />
             ) : <p className="whitespace-pre-wrap text-sm text-gray-800">{action.description}</p>}
           </Section>
+
+          <RewriteDescriptionModal
+            open={rewriteModalOpen}
+            onClose={() => setRewriteModalOpen(false)}
+            actionId={id}
+            originalText={editForm?.description || ''}
+            onApply={(text) => setEditForm((f) => ({ ...f, description: text }))}
+          />
 
           <Section title="Datas e prazos">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -296,14 +347,10 @@ export default function ActionDetail() {
             )}
 
             {canLogHours && (
-              <form onSubmit={submitTimeEntry} className="grid grid-cols-2 sm:grid-cols-5 gap-2 items-end mb-4 border-t border-gray-100 pt-4">
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Data</label>
-                  <input type="date" required value={timeEntryForm.entryDate} onChange={(e) => setTimeEntryForm((f) => ({ ...f, entryDate: e.target.value }))} className="input" />
-                </div>
+              <form onSubmit={submitTimeEntry} className="grid grid-cols-2 sm:grid-cols-4 gap-2 items-end mb-4 border-t border-gray-100 pt-4">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">Horas</label>
-                  <input type="number" min="0.1" step="0.5" required value={timeEntryForm.hours} onChange={(e) => setTimeEntryForm((f) => ({ ...f, hours: e.target.value }))} className="input" />
+                  <input type="number" min="0" step="any" required value={timeEntryForm.hours} onChange={(e) => setTimeEntryForm((f) => ({ ...f, hours: e.target.value }))} className="input" />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">Tipo</label>
@@ -327,37 +374,78 @@ export default function ActionDetail() {
                     <th className="py-1.5 pr-2 font-medium">Data</th>
                     <th className="py-1.5 pr-2 font-medium">Tipo</th>
                     <th className="py-1.5 pr-2 font-medium text-right">Horas</th>
+                    <th className="py-1.5 pr-2 font-medium">Nota</th>
                     <th className="py-1.5 pr-2 font-medium">Usuário</th>
                     <th className="py-1.5 pr-2 font-medium">Situação</th>
-                    {canApproveHours && <th className="py-1.5 pr-2 font-medium">Ações</th>}
+                    {(canLogHours || canApproveHours) && <th className="py-1.5 pr-2 font-medium">Ações</th>}
                   </tr>
                 </thead>
                 <tbody>
-                  {action.timeEntries.map((te) => (
-                    <tr key={te.id} className="border-b border-gray-50">
-                      <td className="py-1.5 pr-2">{formatDate(te.entry_date)}</td>
-                      <td className="py-1.5 pr-2">{te.type === 'ACTUAL' ? 'Real' : 'Planejado'}</td>
-                      <td className={`py-1.5 pr-2 text-right ${te.hours < 0 ? 'text-red-600' : ''}`}>{formatHours(te.hours)}{te.is_legacy_import ? ' *' : ''}</td>
-                      <td className="py-1.5 pr-2">{te.user_name || '—'}</td>
-                      <td className="py-1.5 pr-2">
-                        <span className={`text-xs px-1.5 py-0.5 rounded ${te.approval_status === 'APPROVED' ? 'bg-green-50 text-green-700' : te.approval_status === 'REJECTED' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'}`}>
-                          {te.approval_status === 'APPROVED' ? 'Aprovado' : te.approval_status === 'REJECTED' ? 'Rejeitado' : 'Pendente'}
-                        </span>
-                      </td>
-                      {canApproveHours && (
-                        <td className="py-1.5 pr-2">
-                          {te.approval_status === 'PENDING' && (
-                            <div className="flex gap-1">
-                              <button onClick={() => approveEntry(te.id, true)} className="text-xs text-green-700 hover:underline">Aprovar</button>
-                              <button onClick={() => approveEntry(te.id, false)} className="text-xs text-red-700 hover:underline">Rejeitar</button>
+                  {action.timeEntries.map((te) => {
+                    const isEditing = editingEntryId === te.id;
+                    if (isEditing) {
+                      return (
+                        <tr key={te.id} className="border-b border-gray-50 bg-blue-50/30">
+                          <td className="py-1.5 pr-2">{formatDate(te.entry_date)}</td>
+                          <td className="py-1.5 pr-2">
+                            <select value={editEntryForm.type} onChange={(e) => setEditEntryForm((f) => ({ ...f, type: e.target.value }))} className="input !py-1 !w-auto text-sm">
+                              <option value="ACTUAL">Real</option>
+                              <option value="PLANNED">Planejado</option>
+                            </select>
+                          </td>
+                          <td className="py-1.5 pr-2 text-right">
+                            <input type="number" min="0" step="any" value={editEntryForm.hours} onChange={(e) => setEditEntryForm((f) => ({ ...f, hours: e.target.value }))} className="input !py-1 !w-24 text-right" />
+                          </td>
+                          <td className="py-1.5 pr-2">
+                            <input value={editEntryForm.note} onChange={(e) => setEditEntryForm((f) => ({ ...f, note: e.target.value }))} className="input !py-1" />
+                          </td>
+                          <td className="py-1.5 pr-2">{te.user_name || '—'}</td>
+                          <td className="py-1.5 pr-2">
+                            <span className={`text-xs px-1.5 py-0.5 rounded ${te.approval_status === 'APPROVED' ? 'bg-green-50 text-green-700' : te.approval_status === 'REJECTED' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'}`}>
+                              {te.approval_status === 'APPROVED' ? 'Aprovado' : te.approval_status === 'REJECTED' ? 'Rejeitado' : 'Pendente'}
+                            </span>
+                          </td>
+                          <td className="py-1.5 pr-2">
+                            <div className="flex gap-2">
+                              <button disabled={savingEntryEdit} onClick={() => saveEditEntry(te.id)} className="text-xs text-blue-700 hover:underline disabled:opacity-50">Salvar</button>
+                              <button disabled={savingEntryEdit} onClick={cancelEditEntry} className="text-xs text-gray-500 hover:underline disabled:opacity-50">Cancelar</button>
                             </div>
-                          )}
+                          </td>
+                        </tr>
+                      );
+                    }
+                    return (
+                      <tr key={te.id} className="border-b border-gray-50">
+                        <td className="py-1.5 pr-2">{formatDate(te.entry_date)}</td>
+                        <td className="py-1.5 pr-2">{te.type === 'ACTUAL' ? 'Real' : 'Planejado'}</td>
+                        <td className={`py-1.5 pr-2 text-right ${te.hours < 0 ? 'text-red-600' : ''}`}>{formatHours(te.hours)}{te.is_legacy_import ? ' *' : ''}</td>
+                        <td className="py-1.5 pr-2 text-gray-500">{te.note || '—'}</td>
+                        <td className="py-1.5 pr-2">{te.user_name || '—'}</td>
+                        <td className="py-1.5 pr-2">
+                          <span className={`text-xs px-1.5 py-0.5 rounded ${te.approval_status === 'APPROVED' ? 'bg-green-50 text-green-700' : te.approval_status === 'REJECTED' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'}`}>
+                            {te.approval_status === 'APPROVED' ? 'Aprovado' : te.approval_status === 'REJECTED' ? 'Rejeitado' : 'Pendente'}
+                          </span>
                         </td>
-                      )}
-                    </tr>
-                  ))}
+                        {(canLogHours || canApproveHours) && (
+                          <td className="py-1.5 pr-2">
+                            <div className="flex gap-2 items-center">
+                              {canLogHours && (
+                                <button onClick={() => startEditEntry(te)} className="text-xs text-blue-700 hover:underline">Editar</button>
+                              )}
+                              {canApproveHours && te.approval_status === 'PENDING' && (
+                                <>
+                                  <button onClick={() => approveEntry(te.id, true)} className="text-xs text-green-700 hover:underline">Aprovar</button>
+                                  <button onClick={() => approveEntry(te.id, false)} className="text-xs text-red-700 hover:underline">Rejeitar</button>
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
                   {action.timeEntries.length === 0 && (
-                    <tr><td colSpan={6} className="py-3 text-center text-gray-400">Nenhum lançamento de horas.</td></tr>
+                    <tr><td colSpan={7} className="py-3 text-center text-gray-400">Nenhum lançamento de horas.</td></tr>
                   )}
                 </tbody>
               </table>
@@ -458,10 +546,13 @@ export default function ActionDetail() {
   );
 }
 
-function Section({ title, children }) {
+function Section({ title, children, action }) {
   return (
     <div className="bg-white border border-[var(--color-border)] rounded-xl p-4">
-      <h2 className="text-sm font-semibold text-gray-700 mb-3">{title}</h2>
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-sm font-semibold text-gray-700">{title}</h2>
+        {action}
+      </div>
       {children}
     </div>
   );

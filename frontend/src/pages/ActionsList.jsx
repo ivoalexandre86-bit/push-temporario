@@ -40,6 +40,10 @@ export default function ActionsList() {
   const [visibleCols, setVisibleCols] = useState(COLUMNS.map((c) => c.key));
   const navigate = useNavigate();
   const defaultProjectId = filters.projectId?.length === 1 ? filters.projectId[0] : undefined;
+  // When this screen was reached filtered down to a single project (e.g. from
+  // "Ver todas as ações" inside a project's workspace), offer a quick way back.
+  const cameFromProject = new URLSearchParams(asQueryString).get('projectId');
+  const backToProjectId = cameFromProject && !cameFromProject.includes(',') ? cameFromProject : defaultProjectId;
 
   useEffect(() => { setPage(1); }, [asQueryString]);
 
@@ -77,7 +81,14 @@ export default function ActionsList() {
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
-        <h1 className="text-xl font-bold text-gray-900">Ações</h1>
+        <div className="flex items-center gap-2">
+          {backToProjectId && (
+            <button onClick={() => navigate(`/projetos/${backToProjectId}`)} className="px-3 py-1.5 rounded-md border border-gray-300 text-sm text-gray-700 hover:bg-gray-50">
+              ← Voltar ao projeto
+            </button>
+          )}
+          <h1 className="text-xl font-bold text-gray-900">Ações</h1>
+        </div>
         <div className="flex items-center gap-2">
           <button onClick={() => handleExport('csv')} className="px-3 py-1.5 rounded-md border border-gray-300 text-sm text-gray-700 hover:bg-gray-50">CSV</button>
           <button onClick={() => handleExport('xlsx')} className="px-3 py-1.5 rounded-md border border-gray-300 text-sm text-gray-700 hover:bg-gray-50">XLSX</button>

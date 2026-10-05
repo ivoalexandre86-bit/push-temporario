@@ -3,16 +3,19 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 import { Loading, ErrorState } from '../components/Loading';
 import ActionFormModal from '../components/ActionFormModal';
 import ProjectFormModal from '../components/ProjectFormModal';
+import StatusChip from '../components/StatusChip';
 import { formatDateTime, formatHours, formatMonthYear, formatPercent } from '../utils/format';
-import { PERMISSIONS, STATUS_META, CHART_COLORS } from '../utils/constants';
+import { PERMISSIONS, STATUS_META, CHART_COLORS, PROJECT_STATUSES, PROJECT_STATUS_META } from '../utils/constants';
 
 export default function ProjectWorkspace() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { hasPermission } = useAuth();
+  const toast = useToast();
   const [project, setProject] = useState(null);
   const [dashboard, setDashboard] = useState(null);
   const [activity, setActivity] = useState([]);
@@ -42,6 +45,19 @@ export default function ProjectWorkspace() {
   if (error) return <ErrorState message={error} />;
   if (!project || !dashboard) return null;
 
+  const canManageProject = hasPermission(PERMISSIONS.PROJECTS_MANAGE);
+
+  const handleStatusChange = async (newStatus) => {
+    if (newStatus === project.status) return;
+    try {
+      await api.patch(`/projects/${id}`, { status: newStatus });
+      setProject((p) => ({ ...p, status: newStatus }));
+      toast.success(`Status do projeto alterado para ${PROJECT_STATUS_META[newStatus]?.label}.`);
+    } catch (err) {
+      toast.error(err.message);
+    }
+  };
+
   return (
     <div>
       <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
@@ -51,7 +67,21 @@ export default function ProjectWorkspace() {
       </div>
       <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">{project.name}</h1>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-xl font-bold text-gray-900">{project.name}</h1>
+            {canManageProject ? (
+              <select
+                value={project.status}
+                onChange={(e) => handleStatusChange(e.target.value)}
+                className="input !w-auto !py-1 text-xs"
+                aria-label="Alterar status do projeto"
+              >
+                {PROJECT_STATUSES.map((s) => <option key={s} value={s}>{PROJECT_STATUS_META[s].label}</option>)}
+              </select>
+            ) : (
+              <StatusChip status={project.status} metaMap={PROJECT_STATUS_META} />
+            )}
+          </div>
           {project.description && <p className="text-sm text-gray-500 mt-1 max-w-xl">{project.description}</p>}
           <p className="text-xs text-gray-400 mt-1">Gerente: {project.manager_name || 'não definido'}</p>
         </div>

@@ -1,6 +1,12 @@
 // Simple, dependency-free migration runner.
 // Applies every .sql file in ./migrations, in filename order, exactly once,
 // tracked via the schema_migrations table.
+//
+// Loads backend/.env when run directly (e.g. `npm run migrate`) so
+// DATABASE_URL is available even outside `npm start`/`npm run dev` (which
+// load it via server.js) — a managed host like Render sets it as a real
+// environment variable already, so this is a no-op there.
+require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
 const db = require('./connection');

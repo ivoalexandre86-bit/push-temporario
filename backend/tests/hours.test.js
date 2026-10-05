@@ -63,6 +63,37 @@ describe('Hours management', () => {
     expect(res.status).toBe(400);
   });
 
+  it('allows editing an existing time entry (Melhoria 4)', async () => {
+    const action = await createAction(db, { projectId: proj, areaId: area, status: 'ANDAMENTO', plannedHours: 10 });
+    const createRes = await withAuth(request(app).post('/api/time-entries'), adminCookie).send({ actionId: action.businessId, entryDate: '2026-01-05', hours: 2, type: 'ACTUAL', note: 'original' });
+    expect(createRes.status).toBe(201);
+
+    const editRes = await withAuth(request(app).patch(`/api/time-entries/${createRes.body.id}`), adminCookie).send({ hours: 5, note: 'corrigido' });
+    expect(editRes.status).toBe(200);
+
+    const entry = await db.get('SELECT * FROM time_entries WHERE id = ?', createRes.body.id);
+    expect(entry.hours).toBe(5);
+    expect(entry.note).toBe('corrigido');
+    expect(entry.type).toBe('ACTUAL'); // untouched field keeps its previous value
+
+    const res = await withAuth(request(app).get(`/api/actions/${action.businessId}`), adminCookie);
+    expect(res.body.actualHours).toBe(5);
+  });
+
+  it("editing a Contributor's own entry sends it back to PENDING for re-approval", async () => {
+    const contributor = await createUser(db, { name: 'Colaborador Edicao', email: 'contrib.edicao@test.local', roleKey: 'CONTRIBUTOR' });
+    await scopeUserToProject(db, contributor, proj);
+    const action = await createAction(db, { projectId: proj, areaId: area, status: 'ANDAMENTO', plannedHours: 10, assigneeUserId: contributor });
+    const { cookie: contribCookie } = await login(app, 'contrib.edicao@test.local');
+
+    const createRes = await withAuth(request(app).post('/api/time-entries'), contribCookie).send({ actionId: action.businessId, entryDate: '2026-01-05', hours: 3, type: 'ACTUAL' });
+    await withAuth(request(app).patch(`/api/time-entries/${createRes.body.id}/approve`), adminCookie).send({ approve: true });
+
+    const editRes = await withAuth(request(app).patch(`/api/time-entries/${createRes.body.id}`), contribCookie).send({ hours: 4 });
+    expect(editRes.status).toBe(200);
+    expect(editRes.body.approvalStatus).toBe('PENDING');
+  });
+
   it('preserves negative imported legacy hours exactly, without altering them', async () => {
     const uuid = require('uuid').v4();
     const maxRow = await db.get('SELECT MAX(business_id) m FROM actions');
