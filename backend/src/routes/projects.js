@@ -196,8 +196,8 @@ router.patch('/:id', requirePermission(PERMISSIONS.PROJECTS_MANAGE), async (req,
       merged.priority, merged.notes, new Date().toISOString(), id);
     await auditService.recordDiff({
       entityType: 'PROJECT', entityId: id, projectId: id,
-      before, after: { ...before, ...body, manager_user_id: merged.manager_user_id, notes: merged.notes },
-      fieldsToTrack: ['name', 'description', 'active', 'manager_user_id', 'status', 'priority', 'notes'],
+      before, after: { ...before, ...body, notes: merged.notes },
+      fieldsToTrack: ['name', 'description', 'active', 'status', 'priority', 'notes'],
       actor: req.user, req,
     });
     if (manager) {
