@@ -74,7 +74,20 @@ app.use('/api', notFoundHandler);
 // can run behind one origin/port with no separate web server or CORS setup.
 const FRONTEND_DIST = path.join(__dirname, '..', '..', 'frontend', 'dist');
 if (process.env.SERVE_FRONTEND !== 'false' && fs.existsSync(FRONTEND_DIST)) {
-  app.use(express.static(FRONTEND_DIST));
+  // PWA: the service worker, manifest and index.html must always be
+  // revalidated so a new deploy reaches installed apps, and the manifest
+  // needs its proper MIME type.
+  app.use(express.static(FRONTEND_DIST, {
+    setHeaders(res, filePath) {
+      const name = path.basename(filePath);
+      if (name === 'manifest.webmanifest') {
+        res.setHeader('Content-Type', 'application/manifest+json; charset=utf-8');
+      }
+      if (name === 'sw.js' || name === 'manifest.webmanifest' || name === 'index.html') {
+        res.setHeader('Cache-Control', 'no-cache');
+      }
+    },
+  }));
   app.get('*', (req, res) => {
     res.sendFile(path.join(FRONTEND_DIST, 'index.html'));
   });
