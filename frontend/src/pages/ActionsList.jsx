@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, downloadFile } from '../api/client';
 import { useActionFilters } from '../hooks/useActionFilters';
@@ -6,6 +6,8 @@ import FilterBar from '../components/FilterBar';
 import StatusChip from '../components/StatusChip';
 import ColumnChooser, { usePersistentColumns, SortHeader, Chevron } from '../components/ColumnChooser';
 import ActionFormModal from '../components/ActionFormModal';
+import QuickActionForm from '../components/QuickActionForm';
+import { useCatalogs } from '../hooks/useCatalogs';
 import { Loading, ErrorState, EmptyState } from '../components/Loading';
 import { formatDate, formatHours, formatMonthYear } from '../utils/format';
 import { FLAG_LABELS, PERMISSIONS, STATUS_META, GRID_STATUS_COLORS, pillStyle } from '../utils/constants';
@@ -50,6 +52,14 @@ export default function ActionsList() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showNew, setShowNew] = useState(false);
+  // uuid of the action whose inline "nova ação" form is open (one at a time).
+  const [quickFrom, setQuickFrom] = useState(null);
+  const [reloadKey, setReloadKey] = useState(0);
+  // The grid scrolls sideways; the inline form is pinned to the visible width.
+  const gridScrollRef = useRef(null);
+  const [quickWidth, setQuickWidth] = useState(null);
+  const { areas, people } = useCatalogs();
+  const canCreate = hasPermission(PERMISSIONS.ACTIONS_CREATE);
   const [visibleCols, setVisibleCols] = usePersistentColumns('acoes.grid.columns', COLUMNS, LOCKED_COLUMNS);
   const navigate = useNavigate();
   const defaultProjectId = filters.projectId?.length === 1 ? filters.projectId[0] : undefined;
@@ -73,7 +83,9 @@ export default function ActionsList() {
       .catch((e) => { if (!cancelled) setError(e.message); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [asQueryString, page, pageSize, sortBy, sortDir]);
+  }, [asQueryString, page, pageSize, sortBy, sortDir, reloadKey]);
+
+  const handleQuickCreated = () => { setQuickFrom(null); setReloadKey((k) => k + 1); };
 
   const toggleSort = (col) => {
     if (!col.sortKey) return;
@@ -105,7 +117,7 @@ export default function ActionsList() {
         <div className="flex items-center gap-2">
           <button onClick={() => handleExport('csv')} className="px-3 py-1.5 rounded-md border border-gray-300 text-sm text-gray-700 hover:bg-gray-50">CSV</button>
           <button onClick={() => handleExport('xlsx')} className="px-3 py-1.5 rounded-md border border-gray-300 text-sm text-gray-700 hover:bg-gray-50">XLSX</button>
-          {hasPermission(PERMISSIONS.ACTIONS_CREATE) && (
+          {canCreate && (
             <button onClick={() => setShowNew(true)} className="px-3 py-1.5 rounded-md bg-blue-600 text-white text-sm font-medium hover:bg-blue-700">
               + Nova ação
             </button>
@@ -125,7 +137,7 @@ export default function ActionsList() {
         <>
           {/* Desktop table */}
           <div className="hidden md:block dg">
-            <div className="overflow-x-auto scrollbar-thin">
+            <div ref={gridScrollRef} className="overflow-x-auto scrollbar-thin">
               <table>
                 <thead>
                   <tr>
@@ -143,8 +155,8 @@ export default function ActionsList() {
                 </thead>
                 <tbody>
                   {data.items.map((item) => (
+                    <Fragment key={item.uuid}>
                     <tr
-                      key={item.uuid}
                       className="cursor-pointer"
                       style={{ '--row-accent': GRID_STATUS_COLORS[item.status] || '#334155' }}
                       onClick={() => navigate(`/acoes/${item.id}`)}
@@ -162,10 +174,36 @@ export default function ActionsList() {
                       {visibleCols.includes('dueDate') && <td className={`whitespace-nowrap tabular-nums ${item.overdue ? 'danger' : ''}`}>{formatDate(item.dueDate || item.completionDate)}</td>}
                       {visibleCols.includes('status') && <td><ActionStatusPill status={item.status} /></td>}
                       {visibleCols.includes('updatedAt') && <td className="whitespace-nowrap muted tabular-nums">{formatDate(item.updatedAt)}</td>}
-                      <td className="num">
+                      <td className="num whitespace-nowrap">
+                        {canCreate && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setQuickWidth(gridScrollRef.current?.clientWidth || null);
+                              setQuickFrom((u) => (u === item.uuid ? null : item.uuid));
+                            }}
+                            className="dg-chevron dg-add"
+                            title="Adicionar nova ação a partir desta"
+                            aria-label={`Adicionar nova ação a partir da ação #${item.id}`}
+                            aria-expanded={quickFrom === item.uuid}
+                          >
+                            +
+                          </button>
+                        )}
                         <span className="dg-chevron" aria-hidden="true"><Chevron /></span>
                       </td>
                     </tr>
+                    {quickFrom === item.uuid && (
+                      <tr className="dg-quick">
+                        <td colSpan={cols.length + 1}>
+                          <div className="sticky left-0" style={{ width: quickWidth ? quickWidth - 24 : undefined }}>
+                          <QuickActionForm source={item} areas={areas} people={people} onCreated={handleQuickCreated} onCancel={() => setQuickFrom(null)} />
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   ))}
                 </tbody>
               </table>
@@ -175,7 +213,8 @@ export default function ActionsList() {
           {/* Mobile cards */}
           <div className="md:hidden space-y-3">
             {data.items.map((item) => (
-              <button key={item.uuid} onClick={() => navigate(`/acoes/${item.id}`)} className="w-full text-left bg-white border border-[var(--color-border)] rounded-xl p-4">
+              <div key={item.uuid}>
+              <button onClick={() => navigate(`/acoes/${item.id}`)} className="w-full text-left bg-white border border-[var(--color-border)] rounded-xl p-4">
                 <div className="flex justify-between items-start gap-2 mb-1">
                   <span className="font-mono text-xs text-gray-400">#{item.id}</span>
                   <StatusChip status={item.status} />
@@ -194,6 +233,17 @@ export default function ActionsList() {
                   </div>
                 )}
               </button>
+              {canCreate && quickFrom !== item.uuid && (
+                <button onClick={() => setQuickFrom(item.uuid)} className="mt-1 text-xs text-blue-700 font-medium px-2 py-1">
+                  + Nova ação a partir desta
+                </button>
+              )}
+              {quickFrom === item.uuid && (
+                <div className="mt-2 border border-[var(--color-border)] rounded-xl">
+                  <QuickActionForm source={item} areas={areas} people={people} onCreated={handleQuickCreated} onCancel={() => setQuickFrom(null)} />
+                </div>
+              )}
+              </div>
             ))}
           </div>
 
@@ -212,7 +262,7 @@ export default function ActionsList() {
         </>
       )}
 
-      <ActionFormModal open={showNew} onClose={() => setShowNew(false)} onCreated={() => { setPage(1); setLoading(true); api.get(`/actions?${asQueryString}&page=1&pageSize=${pageSize}`).then(setData).finally(() => setLoading(false)); }} defaultProjectId={defaultProjectId} />
+      <ActionFormModal open={showNew} onClose={() => setShowNew(false)} onCreated={() => { setPage(1); setReloadKey((k) => k + 1); }} defaultProjectId={defaultProjectId} />
     </div>
   );
 }

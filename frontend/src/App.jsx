@@ -15,6 +15,7 @@ import Hours from './pages/Hours';
 import Reports from './pages/Reports';
 import Audit from './pages/Audit';
 import AdminUsers from './pages/AdminUsers';
+import CatalogLists from './pages/CatalogLists';
 import NotFound from './pages/NotFound';
 import Forbidden from './pages/Forbidden';
 
@@ -57,6 +58,7 @@ export default function App() {
         <Route path="/horas" element={<Hours />} />
         <Route path="/relatorios" element={<Reports />} />
         <Route path="/auditoria" element={<ProtectedRoute permission="audit.view"><Audit /></ProtectedRoute>} />
+        <Route path="/listas" element={<ProtectedRoute permission="areas.manage"><CatalogLists /></ProtectedRoute>} />
         <Route path="/admin/usuarios" element={<ProtectedRoute permission="users.manage"><AdminUsers /></ProtectedRoute>} />
       </Route>
 
