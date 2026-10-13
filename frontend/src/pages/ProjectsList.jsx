@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { Loading, ErrorState, EmptyState } from '../components/Loading';
 import MultiSelect from '../components/MultiSelect';
-import FilterPanel from '../components/FilterPanel';
+import FilterPanel, { FilterToggleButton, useFiltersCollapsed } from '../components/FilterPanel';
 import KpiCard from '../components/KpiCard';
 import ProjectFormModal from '../components/ProjectFormModal';
 import ColumnChooser, { usePersistentColumns, SortHeader, Chevron } from '../components/ColumnChooser';
@@ -261,6 +261,7 @@ export default function ProjectsList() {
   const [error, setError] = useState('');
   const [showNew, setShowNew] = useState(false);
   const { filters, setFilters, clearAll, activeCount } = useProjectFilters();
+  const [filtersCollapsed, toggleFilters] = useFiltersCollapsed();
   const canEdit = hasPermission(PERMISSIONS.PROJECTS_MANAGE);
   const lockedCols = COLUMNS.filter((c) => c.locked).map((c) => c.key);
   const [visibleCols, setVisibleCols] = usePersistentColumns(COLUMNS_STORAGE_KEY, COLUMNS, lockedCols);
@@ -342,11 +343,16 @@ export default function ProjectsList() {
     <div>
       <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
         <h1 className="text-xl font-bold text-gray-900">Projetos</h1>
-        {canEdit && (
-          <button onClick={() => setShowNew(true)} className="px-3 py-1.5 rounded-md bg-blue-600 text-white text-sm font-medium hover:bg-blue-700">
-            + Novo projeto
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {projects.length > 0 && (
+            <FilterToggleButton collapsed={filtersCollapsed} onToggle={toggleFilters} activeCount={activeCount} />
+          )}
+          {canEdit && (
+            <button onClick={() => setShowNew(true)} className="px-3 py-1.5 rounded-md bg-blue-600 text-white text-sm font-medium hover:bg-blue-700">
+              + Novo projeto
+            </button>
+          )}
+        </div>
       </div>
 
       {projects.length === 0 ? (
@@ -378,7 +384,10 @@ export default function ProjectsList() {
             })}
           </div>
 
-          <FilterPanel activeCount={activeCount} onClear={clearAll}>
+          {/* Filters live behind the "Filtros" button (minimized by default); the
+              KPIs take their place at the top of the page. */}
+          {!filtersCollapsed && (
+          <FilterPanel activeCount={activeCount} onClear={clearAll} collapsed={false} onToggle={toggleFilters}>
             <div className="flex flex-wrap gap-3 items-end">
               <MultiSelect
                 label="Projeto"
@@ -431,6 +440,7 @@ export default function ProjectsList() {
               </div>
             </div>
           </FilterPanel>
+          )}
 
           <div className="dg">
             <div className="overflow-x-auto scrollbar-thin">
