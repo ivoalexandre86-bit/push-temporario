@@ -4,9 +4,11 @@ import { STATUSES, STATUS_META } from '../utils/constants';
 import { api } from '../api/client';
 import { useToast } from '../context/ToastContext';
 import { isValidRefMonth, validateActionDates } from '../utils/dateValidation';
+import { newActionDateDefaults } from '../utils/dateDefaults';
+import { AreaSelect, ResponsibleSelect } from './CatalogSelect';
 
 export default function ActionFormModal({ open, onClose, onCreated, defaultProjectId }) {
-  const { projects, areas } = useCatalogs();
+  const { projects, areas, people } = useCatalogs();
   const toast = useToast();
   const [form, setForm] = useState(() => emptyForm(defaultProjectId));
   const [saving, setSaving] = useState(false);
@@ -118,10 +120,7 @@ export default function ActionFormModal({ open, onClose, onCreated, defaultProje
               {projectLocked && <p className="text-xs text-gray-400 mt-1">Vinculado automaticamente ao projeto atual.</p>}
             </Field>
             <Field label="Área/Processo *">
-              <select required value={form.areaId} onChange={(e) => set({ areaId: e.target.value })} className="input">
-                <option value="">Selecione...</option>
-                {areas.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-              </select>
+              <AreaSelect required areas={areas} value={form.areaId} onChange={(areaId) => set({ areaId })} />
             </Field>
             <Field label="Mês de referência *">
               <input type="month" required value={form.refMonth} onChange={(e) => set({ refMonth: e.target.value })} className="input" />
@@ -139,7 +138,7 @@ export default function ActionFormModal({ open, onClose, onCreated, defaultProje
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Responsável">
-              <input value={form.responsibleName} disabled={form.unassigned} onChange={(e) => set({ responsibleName: e.target.value })} className="input disabled:bg-gray-100" />
+              <ResponsibleSelect people={people} value={form.responsibleName} disabled={form.unassigned} onChange={(responsibleName) => set({ responsibleName })} className="input disabled:bg-gray-100" />
             </Field>
             <label className="flex items-center gap-2 text-sm text-gray-700 mt-6">
               <input type="checkbox" checked={form.unassigned} onChange={(e) => set({ unassigned: e.target.checked, responsibleName: '' })} className="rounded border-gray-300 text-blue-600" />
@@ -155,7 +154,7 @@ export default function ActionFormModal({ open, onClose, onCreated, defaultProje
               <input type="date" min="1900-01-01" max="2100-12-31" value={form.startDate} onChange={(e) => setDate('startDate', e)} aria-invalid={!!dateErrors.startDate} className="input" />
               <FieldError message={dateErrors.startDate} />
             </Field>
-            <Field label="Prazo">
+            <Field label="Data fim (prazo)">
               <input type="date" min={form.startDate || '1900-01-01'} max="2100-12-31" value={form.dueDate} onChange={(e) => setDate('dueDate', e)} aria-invalid={!!dateErrors.dueDate} className="input" />
               <FieldError message={dateErrors.dueDate} />
             </Field>
@@ -205,8 +204,9 @@ function FieldError({ message }) {
 
 function emptyForm(defaultProjectId) {
   return {
-    projectId: defaultProjectId || '', areaId: '', refMonth: '', description: '',
-    responsibleName: '', unassigned: false, plannedHours: '', startDate: '', dueDate: '',
+    ...newActionDateDefaults(),
+    projectId: defaultProjectId || '', areaId: '', description: '',
+    responsibleName: '', unassigned: false, plannedHours: '',
     completionDate: '', status: 'ANDAMENTO', observations: '', cancellationReason: '',
   };
 }

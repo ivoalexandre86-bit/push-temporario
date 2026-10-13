@@ -12,6 +12,7 @@ import { formatDate, formatDateTime, formatHours, formatPercent, toInputDate } f
 import { STATUSES, STATUS_META, FLAG_LABELS, IMPORT_EXCEPTION_LABELS, PERMISSIONS } from '../utils/constants';
 import { validateActionDates } from '../utils/dateValidation';
 import AuditValue from '../components/AuditValue';
+import { AreaSelect, ResponsibleSelect } from '../components/CatalogSelect';
 import { auditActionLabel, auditFieldLabel } from '../utils/auditLabels';
 
 
@@ -20,7 +21,7 @@ export default function ActionDetail() {
   const navigate = useNavigate();
   const { user, hasPermission } = useAuth();
   const toast = useToast();
-  const { projects, areas } = useCatalogs();
+  const { projects, areas, people } = useCatalogs();
 
   const [action, setAction] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -280,15 +281,13 @@ export default function ActionDetail() {
               </FieldView>
               <FieldView label="Área/Processo" editable={canEdit}>
                 {canEdit ? (
-                  <select value={editForm.areaId} onChange={(e) => setEditForm((f) => ({ ...f, areaId: e.target.value }))} className="input">
-                    {areas.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-                  </select>
+                  <AreaSelect placeholder={false} areas={areas} value={editForm.areaId} onChange={(areaId) => setEditForm((f) => ({ ...f, areaId }))} />
                 ) : <p>{action.area.name}</p>}
               </FieldView>
               <FieldView label="Mês de referência"><p>{formatDate(action.refMonth)}</p></FieldView>
               <FieldView label="Responsável" editable={canEdit}>
                 {canEdit ? (
-                  <input value={editForm.responsibleName} onChange={(e) => setEditForm((f) => ({ ...f, responsibleName: e.target.value }))} className="input" />
+                  <ResponsibleSelect people={people} value={editForm.responsibleName} onChange={(responsibleName) => setEditForm((f) => ({ ...f, responsibleName }))} />
                 ) : <p>{action.responsibleName || '—'}</p>}
               </FieldView>
             </div>
