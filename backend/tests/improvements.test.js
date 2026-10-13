@@ -244,7 +244,7 @@ describe('6. Gerente do projeto', () => {
     expect(audit.new_value).toBe(`Novo Gerente (#${pmId})`);
 
     // Inline grid edits (priority only) keep working without resending the manager.
-    const inline = await withAuth(request(app).patch(`/api/projects/${created.body.id}`), adminCookie).send({ priority: 'ALTA' });
+    const inline = await withAuth(request(app).patch(`/api/projects/${created.body.id}`), adminCookie).send({ priority: 2 });
     expect(inline.status).toBe(200);
   });
 

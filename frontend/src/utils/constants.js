@@ -63,8 +63,8 @@ export const PROJECT_STATUS_META = {
   CANCELADO: { label: 'Cancelado', bg: 'var(--status-cancelado-bg)', fg: 'var(--status-cancelado-fg)' },
 };
 
-export const PROJECT_PRIORITIES = ['ALTA', 'MEDIA', 'BAIXA'];
-
+// Project priority is now a number (1 = highest). These labels only render
+// old audit entries recorded while it was Alta/Média/Baixa.
 export const PROJECT_PRIORITY_META = {
   ALTA: { label: 'Alta', className: 'text-red-700' },
   MEDIA: { label: 'Média', className: 'text-amber-700' },
@@ -79,12 +79,6 @@ export const GRID_STATUS_COLORS = {
   PARADO: '#fbbf24',
   'CONCLUÍDO': '#4ade80',
   CANCELADO: '#f87171',
-};
-
-export const GRID_PRIORITY_COLORS = {
-  ALTA: '#f87171',
-  MEDIA: '#fbbf24',
-  BAIXA: '#94a3b8',
 };
 
 /** Translucent pill background for an accent color (#rrggbb). */

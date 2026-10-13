@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import MultiSelect from './MultiSelect';
+import FilterPanel from './FilterPanel';
 import { STATUSES, STATUS_META, PROJECT_STATUSES, PROJECT_STATUS_META } from '../utils/constants';
 import { useCatalogs } from '../hooks/useCatalogs';
 import { formatMonthYear } from '../utils/format';
@@ -11,7 +12,7 @@ export default function FilterBar({ filters, setFilters, clearAll, activeCount }
   const years = Array.from({ length: 6 }, (_, i) => String(2023 + i));
 
   return (
-    <div className="bg-white border border-[var(--color-border)] rounded-xl p-3 md:p-4 mb-4">
+    <FilterPanel activeCount={activeCount} onClear={clearAll}>
       <div className="flex flex-wrap gap-3 items-end">
         <MultiSelect
           label="Projeto"
@@ -77,15 +78,6 @@ export default function FilterBar({ filters, setFilters, clearAll, activeCount }
           {showMore ? 'Menos filtros' : 'Mais filtros'}
         </button>
 
-        {activeCount > 0 && (
-          <button
-            type="button"
-            onClick={clearAll}
-            className="px-3 py-1.5 rounded-md text-sm text-blue-700 hover:bg-blue-50 font-medium"
-          >
-            Limpar filtros ({activeCount})
-          </button>
-        )}
       </div>
 
       {showMore && (
@@ -108,7 +100,7 @@ export default function FilterBar({ filters, setFilters, clearAll, activeCount }
           </label>
         </div>
       )}
-    </div>
+    </FilterPanel>
   );
 }
 

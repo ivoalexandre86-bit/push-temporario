@@ -3,17 +3,26 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { Loading, ErrorState, EmptyState } from '../components/Loading';
 import MultiSelect from '../components/MultiSelect';
+import FilterPanel, { FilterToggleButton, useFiltersCollapsed } from '../components/FilterPanel';
+import KpiCard from '../components/KpiCard';
 import ProjectFormModal from '../components/ProjectFormModal';
 import ColumnChooser, { usePersistentColumns, SortHeader, Chevron } from '../components/ColumnChooser';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import {
-  PERMISSIONS, PROJECT_STATUSES, PROJECT_STATUS_META, PROJECT_PRIORITIES, PROJECT_PRIORITY_META,
-  GRID_STATUS_COLORS, GRID_PRIORITY_COLORS, pillStyle,
+  PERMISSIONS, PROJECT_STATUSES, PROJECT_STATUS_META,
+  GRID_STATUS_COLORS, pillStyle,
 } from '../utils/constants';
 import { formatDate, formatPercent } from '../utils/format';
 
 const NONE = 'none';
+
+const STATUS_KPIS = [
+  { status: 'ANDAMENTO', tone: 'blue' },
+  { status: 'PARADO', tone: 'amber' },
+  { status: 'CONCLUÍDO', tone: 'green' },
+  { status: 'CANCELADO', tone: 'red' },
+];
 
 const PCT_RANGES = [
   { value: '0-25', label: '0–25%', min: 0, max: 25 },
@@ -28,13 +37,12 @@ const FLAG_KEYS = ['open', 'overdue', 'soon'];
 
 const COLUMNS_STORAGE_KEY = 'projetos.grid.columns';
 
-const PRIORITY_RANK = { ALTA: 0, MEDIA: 1, BAIXA: 2 };
-
 const COLUMNS = [
   { key: 'name', label: 'Projeto', get: (p) => p.name.toLowerCase(), locked: true },
   { key: 'status', label: 'Status do projeto', get: (p) => PROJECT_STATUS_META[p.status]?.label || p.status },
   { key: 'manager', label: 'Gerente', get: (p) => p.manager_name?.toLowerCase() ?? null },
-  { key: 'priority', label: 'Prioridade', get: (p) => PRIORITY_RANK[p.priority] ?? null },
+  // Numeric priority, 1 = highest: ascending sort puts the most important first.
+  { key: 'priority', label: 'Prioridade', get: (p) => p.priority ?? null, numeric: true },
   { key: 'actions', label: 'Ações', get: (p) => p.action_count, numeric: true },
   { key: 'open', label: 'Em aberto', get: (p) => p.open_count, numeric: true },
   { key: 'overdue', label: 'Atrasadas', get: (p) => p.overdue_count, numeric: true },
@@ -94,7 +102,7 @@ function applyFilters(projects, f) {
     if (f.project.length && !f.project.includes(String(p.id))) return false;
     if (f.status.length && !f.status.includes(p.status)) return false;
     if (f.manager.length && !f.manager.includes(p.manager_user_id ? String(p.manager_user_id) : NONE)) return false;
-    if (f.priority.length && !f.priority.includes(p.priority || NONE)) return false;
+    if (f.priority.length && !f.priority.includes(p.priority != null ? String(p.priority) : NONE)) return false;
     if (f.open && !(p.open_count > 0)) return false;
     if (f.overdue && !(p.overdue_count > 0)) return false;
     // due_soon_count = open actions due between today and today + 7 days (computed by the API)
@@ -146,28 +154,52 @@ function StatusCell({ project, canEdit, onSave }) {
 }
 
 function PriorityCell({ project, canEdit, onSave }) {
-  const color = GRID_PRIORITY_COLORS[project.priority];
-  const meta = PROJECT_PRIORITY_META[project.priority];
-  const dot = <span className="dg-dot" style={{ background: color || '#334155' }} aria-hidden="true" />;
+  const current = project.priority != null ? String(project.priority) : '';
+  const [draft, setDraft] = useState(current);
+  const cancelRef = useRef(false);
+  const toast = useToast();
+
   if (!canEdit) {
-    return meta
-      ? <span className="inline-flex items-center gap-2 font-medium" style={{ color }}>{dot}{meta.label}</span>
-      : <span className="muted">—</span>;
+    return current ? <span className="font-semibold tabular-nums">{current}</span> : <span className="muted">—</span>;
   }
+
+  const commit = () => {
+    if (cancelRef.current) { cancelRef.current = false; return; }
+    const value = draft.trim();
+    if (value === current) return;
+    if (value === '') { onSave(project, { priority: null }); return; }
+    const n = Number(value);
+    if (!Number.isInteger(n) || n < 1 || n > 999) {
+      toast.error('A prioridade deve ser um número inteiro de 1 a 999 (1 = mais prioritário).');
+      setDraft(current);
+      return;
+    }
+    onSave(project, { priority: n });
+  };
+
   return (
-    <span className="inline-flex items-center gap-1.5">
-      {dot}
-      <select
-        value={project.priority || ''}
-        onChange={(e) => onSave(project, { priority: e.target.value || null })}
-        aria-label={`Prioridade de ${project.name}`}
-        className="dg-input"
-        style={{ color: color || '#8b95a7' }}
-      >
-        <option value="">—</option>
-        {PROJECT_PRIORITIES.map((pr) => <option key={pr} value={pr}>{PROJECT_PRIORITY_META[pr].label}</option>)}
-      </select>
-    </span>
+    <input
+      type="number"
+      min={1}
+      max={999}
+      step={1}
+      inputMode="numeric"
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') e.currentTarget.blur();
+        if (e.key === 'Escape') {
+          cancelRef.current = true;
+          setDraft(current);
+          e.currentTarget.blur();
+        }
+      }}
+      placeholder="—"
+      aria-label={`Prioridade de ${project.name} (1 = mais prioritário)`}
+      title="1 = mais prioritário"
+      className="dg-input w-16 text-right tabular-nums"
+    />
   );
 }
 
@@ -229,6 +261,7 @@ export default function ProjectsList() {
   const [error, setError] = useState('');
   const [showNew, setShowNew] = useState(false);
   const { filters, setFilters, clearAll, activeCount } = useProjectFilters();
+  const [filtersCollapsed, toggleFilters] = useFiltersCollapsed();
   const canEdit = hasPermission(PERMISSIONS.PROJECTS_MANAGE);
   const lockedCols = COLUMNS.filter((c) => c.locked).map((c) => c.key);
   const [visibleCols, setVisibleCols] = usePersistentColumns(COLUMNS_STORAGE_KEY, COLUMNS, lockedCols);
@@ -255,6 +288,23 @@ export default function ProjectsList() {
     () => (projects ? sortProjects(applyFilters(projects, filters), filters.sort, filters.dir) : []),
     [projects, filters],
   );
+
+  // KPI counts by project status: every other filter applies, the status
+  // filter does not, so the other statuses stay visible after clicking one.
+  const statusCounts = useMemo(() => {
+    const counts = Object.fromEntries(PROJECT_STATUSES.map((st) => [st, 0]));
+    let total = 0;
+    for (const p of applyFilters(projects || [], { ...filters, status: [] })) {
+      total += 1;
+      if (p.status in counts) counts[p.status] += 1;
+    }
+    return { counts, total };
+  }, [projects, filters]);
+
+  const priorityOptions = useMemo(() => {
+    const values = [...new Set((projects || []).map((p) => p.priority).filter((v) => v != null))].sort((a, b) => a - b);
+    return [{ value: NONE, label: 'Sem prioridade' }, ...values.map((v) => ({ value: String(v), label: String(v) }))];
+  }, [projects]);
 
   const managerOptions = useMemo(() => {
     const map = new Map();
@@ -293,18 +343,51 @@ export default function ProjectsList() {
     <div>
       <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
         <h1 className="text-xl font-bold text-gray-900">Projetos</h1>
-        {canEdit && (
-          <button onClick={() => setShowNew(true)} className="px-3 py-1.5 rounded-md bg-blue-600 text-white text-sm font-medium hover:bg-blue-700">
-            + Novo projeto
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {projects.length > 0 && (
+            <FilterToggleButton collapsed={filtersCollapsed} onToggle={toggleFilters} activeCount={activeCount} />
+          )}
+          {canEdit && (
+            <button onClick={() => setShowNew(true)} className="px-3 py-1.5 rounded-md bg-blue-600 text-white text-sm font-medium hover:bg-blue-700">
+              + Novo projeto
+            </button>
+          )}
+        </div>
       </div>
 
       {projects.length === 0 ? (
         <EmptyState title="Nenhum projeto disponível" description="Você ainda não tem acesso a nenhum projeto." />
       ) : (
         <>
-          <div className="bg-white border border-[var(--color-border)] rounded-xl p-3 md:p-4 mb-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-4">
+            <KpiCard
+              label="Projetos"
+              value={statusCounts.total}
+              onClick={() => setFilters({ status: [] })}
+              active={filters.status.length === 0}
+              sublabel={filters.status.length === 0 ? 'Todos os status' : 'Mostrar todos'}
+            />
+            {STATUS_KPIS.map(({ status, tone }) => {
+              const on = filters.status.includes(status);
+              return (
+                <KpiCard
+                  key={status}
+                  label={PROJECT_STATUS_META[status]?.label || status}
+                  value={statusCounts.counts[status] ?? 0}
+                  tone={tone}
+                  // Click filters the grid by this status; clicking it again removes the filter.
+                  onClick={() => setFilters({ status: on && filters.status.length === 1 ? [] : [status] })}
+                  active={on}
+                  sublabel={on ? 'Filtro ativo' : undefined}
+                />
+              );
+            })}
+          </div>
+
+          {/* Filters live behind the "Filtros" button (minimized by default); the
+              KPIs take their place at the top of the page. */}
+          {!filtersCollapsed && (
+          <FilterPanel activeCount={activeCount} onClear={clearAll} collapsed={false} onToggle={toggleFilters}>
             <div className="flex flex-wrap gap-3 items-end">
               <MultiSelect
                 label="Projeto"
@@ -326,7 +409,7 @@ export default function ProjectsList() {
               />
               <MultiSelect
                 label="Prioridade"
-                options={[{ value: NONE, label: 'Sem prioridade' }, ...PROJECT_PRIORITIES.map((p) => ({ value: p, label: PROJECT_PRIORITY_META[p].label }))]}
+                options={priorityOptions}
                 value={filters.priority}
                 onChange={(v) => setFilters({ priority: v })}
               />
@@ -354,17 +437,10 @@ export default function ProjectsList() {
               {checkbox('soon', 'Prazo nos próximos 7 dias')}
               <div className="ml-auto flex items-center gap-3 text-sm">
                 <span className="text-gray-500">{visible.length} de {projects.length} projetos</span>
-                <button
-                  type="button"
-                  onClick={clearAll}
-                  disabled={activeCount === 0}
-                  className="text-blue-600 hover:underline font-medium disabled:text-gray-300 disabled:no-underline disabled:cursor-not-allowed"
-                >
-                  Limpar filtros
-                </button>
               </div>
             </div>
-          </div>
+          </FilterPanel>
+          )}
 
           <div className="dg">
             <div className="overflow-x-auto scrollbar-thin">

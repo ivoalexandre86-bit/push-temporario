@@ -60,7 +60,7 @@ describe('Project visibility', () => {
   });
 
   it('does not let a manager edit a project outside their visibility', async () => {
-    const res = await withAuth(request(app).patch(`/api/projects/${other}`), pmCookie).send({ priority: 'ALTA' });
+    const res = await withAuth(request(app).patch(`/api/projects/${other}`), pmCookie).send({ priority: 1 });
     expect(res.status).toBe(403);
   });
 

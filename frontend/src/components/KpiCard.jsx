@@ -10,6 +10,8 @@ export default function KpiCard({ label, value, sublabel, tone = 'default', onCl
   return (
     <Comp
       onClick={onClick}
+      type={onClick ? 'button' : undefined}
+      aria-pressed={onClick && active !== undefined ? Boolean(active) : undefined}
       className={`text-left bg-white border rounded-xl p-4 flex flex-col gap-1 transition-shadow ${
         onClick ? 'hover:shadow-md cursor-pointer' : ''
       } ${active ? 'border-blue-400 ring-1 ring-blue-200' : 'border-[var(--color-border)]'}`}
