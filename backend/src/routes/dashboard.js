@@ -1,14 +1,12 @@
 const express = require('express');
 const db = require('../db/connection');
 const { authenticate } = require('../middleware/auth');
-const { requirePermission, allowedProjectIds } = require('../middleware/rbac');
+const { requirePermission } = require('../middleware/rbac');
 const { PERMISSIONS } = require('../permissions');
-const { buildActionFilters, BASE_FROM, toArray } = require('../services/actionFilters');
+const { buildActionFilters, BASE_FROM } = require('../services/actionFilters');
 const { todayISODate } = require('../utils/dates');
 const { round2, addDaysISO } = require('../services/actionsService');
 const { resolvePeriodMonths, fillMonths } = require('../services/monthlySeries');
-
-const PROJECT_STATUSES = ['ANDAMENTO', 'PARADO', 'CONCLUÍDO', 'CANCELADO'];
 
 const router = express.Router();
 router.use(authenticate);
@@ -90,29 +88,6 @@ router.get('/', async (req, res, next) => {
       ${BASE_FROM} WHERE ${where} GROUP BY responsible ORDER BY count DESC
     `, ...params);
 
-    // Project counts by the project's own status, for the KPI row. Counts every
-    // project the user can see (projects without actions included), honoring
-    // only the Projeto filter, so clicking one status still shows the others.
-    const projClauses = [];
-    const projParams = [];
-    const scopedProjectIds = await allowedProjectIds(req.user);
-    if (scopedProjectIds !== null) {
-      projClauses.push(scopedProjectIds.length ? `id IN (${scopedProjectIds.map(() => '?').join(',')})` : '1=0');
-      projParams.push(...scopedProjectIds);
-    }
-    const projectIdFilter = toArray(req.query.projectId).map(Number).filter(Number.isFinite);
-    if (projectIdFilter.length) {
-      projClauses.push(`id IN (${projectIdFilter.map(() => '?').join(',')})`);
-      projParams.push(...projectIdFilter);
-    }
-    const projectStatusRows = await db.all(`
-      SELECT status, COUNT(*)::int AS count FROM projects
-      ${projClauses.length ? `WHERE ${projClauses.join(' AND ')}` : ''}
-      GROUP BY status
-    `, ...projParams);
-    const projectsByStatus = Object.fromEntries(PROJECT_STATUSES.map((s) => [s, 0]));
-    for (const r of projectStatusRows) if (r.status in projectsByStatus) projectsByStatus[r.status] = r.count;
-
     const statusMap = Object.fromEntries(byStatus.map((r) => [r.status, r.count]));
     const completed = statusMap['CONCLUÍDO'] || 0;
     const cancelled = statusMap['CANCELADO'] || 0;
@@ -122,8 +97,6 @@ router.get('/', async (req, res, next) => {
     const completionPct = totals.total ? round2((completed / totals.total) * 100) : 0;
 
     res.json({
-      projectsByStatus,
-      totalProjects: Object.values(projectsByStatus).reduce((s, n) => s + n, 0),
       totalActions: totals.total,
       byStatus: { ANDAMENTO: inProgress, CONCLUÍDO: completed, 'EM ESTUDO': inStudy, CANCELADO: cancelled },
       openActions: open,

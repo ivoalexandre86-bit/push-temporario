@@ -12,14 +12,7 @@ import HoursExplainer from '../components/HoursExplainer';
 import SavedViewsMenu from '../components/SavedViewsMenu';
 import { Loading, ErrorState, EmptyState } from '../components/Loading';
 import { formatHours, formatMonthYear, formatNumber, formatPercent, formatSignedHours } from '../utils/format';
-import { CHART_COLORS, STATUS_META, PROJECT_STATUS_META } from '../utils/constants';
-
-const PROJECT_KPIS = [
-  { status: 'ANDAMENTO', tone: 'blue' },
-  { status: 'PARADO', tone: 'amber' },
-  { status: 'CONCLUÍDO', tone: 'green' },
-  { status: 'CANCELADO', tone: 'red' },
-];
+import { CHART_COLORS, STATUS_META } from '../utils/constants';
 
 export default function Dashboard() {
   const { filters, setFilters, clearAll, activeCount, asQueryString } = useActionFilters();
@@ -45,12 +38,6 @@ export default function Dashboard() {
     navigate(`/acoes?${params.toString()}`);
   };
 
-  // Clicking a project-status KPI filters the Painel by that status; clicking
-  // the same one again (or "Projetos") removes the filter.
-  const projectStatusFilter = filters.projectStatus;
-  const onlyStatus = projectStatusFilter.length === 1 ? projectStatusFilter[0] : null;
-  const toggleProjectStatus = (status) => setFilters({ projectStatus: onlyStatus === status ? [] : [status] });
-
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
@@ -66,32 +53,6 @@ export default function Dashboard() {
 
       {data && !loading && (
         <>
-          {data.projectsByStatus && (
-            <div className="mb-4">
-              <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Projetos por status (clique para filtrar o Painel)</p>
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-                <KpiCard
-                  label="Projetos"
-                  value={data.totalProjects}
-                  onClick={() => setFilters({ projectStatus: [] })}
-                  active={projectStatusFilter.length === 0}
-                  sublabel={projectStatusFilter.length === 0 ? 'Todos os status' : 'Mostrar todos'}
-                />
-                {PROJECT_KPIS.map(({ status, tone }) => (
-                  <KpiCard
-                    key={status}
-                    label={PROJECT_STATUS_META[status]?.label || status}
-                    value={data.projectsByStatus[status] ?? 0}
-                    tone={tone}
-                    onClick={() => toggleProjectStatus(status)}
-                    active={projectStatusFilter.includes(status)}
-                    sublabel={projectStatusFilter.includes(status) ? 'Filtro ativo' : undefined}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-
           <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-3 mb-4">
             <KpiCard label="Total de ações" value={data.totalActions} onClick={() => goToActions({})} />
             <KpiCard label="Em aberto" value={data.openActions} tone="blue" onClick={() => goToActions({ status: 'ANDAMENTO,EM ESTUDO' })} />

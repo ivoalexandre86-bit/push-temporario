@@ -4,6 +4,7 @@ import { api } from '../api/client';
 import { Loading, ErrorState, EmptyState } from '../components/Loading';
 import MultiSelect from '../components/MultiSelect';
 import FilterPanel from '../components/FilterPanel';
+import KpiCard from '../components/KpiCard';
 import ProjectFormModal from '../components/ProjectFormModal';
 import ColumnChooser, { usePersistentColumns, SortHeader, Chevron } from '../components/ColumnChooser';
 import { useAuth } from '../context/AuthContext';
@@ -15,6 +16,13 @@ import {
 import { formatDate, formatPercent } from '../utils/format';
 
 const NONE = 'none';
+
+const STATUS_KPIS = [
+  { status: 'ANDAMENTO', tone: 'blue' },
+  { status: 'PARADO', tone: 'amber' },
+  { status: 'CONCLUÍDO', tone: 'green' },
+  { status: 'CANCELADO', tone: 'red' },
+];
 
 const PCT_RANGES = [
   { value: '0-25', label: '0–25%', min: 0, max: 25 },
@@ -257,6 +265,18 @@ export default function ProjectsList() {
     [projects, filters],
   );
 
+  // KPI counts by project status: every other filter applies, the status
+  // filter does not, so the other statuses stay visible after clicking one.
+  const statusCounts = useMemo(() => {
+    const counts = Object.fromEntries(PROJECT_STATUSES.map((st) => [st, 0]));
+    let total = 0;
+    for (const p of applyFilters(projects || [], { ...filters, status: [] })) {
+      total += 1;
+      if (p.status in counts) counts[p.status] += 1;
+    }
+    return { counts, total };
+  }, [projects, filters]);
+
   const managerOptions = useMemo(() => {
     const map = new Map();
     for (const p of projects || []) if (p.manager_user_id) map.set(String(p.manager_user_id), p.manager_name || `Usuário ${p.manager_user_id}`);
@@ -305,6 +325,31 @@ export default function ProjectsList() {
         <EmptyState title="Nenhum projeto disponível" description="Você ainda não tem acesso a nenhum projeto." />
       ) : (
         <>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-4">
+            <KpiCard
+              label="Projetos"
+              value={statusCounts.total}
+              onClick={() => setFilters({ status: [] })}
+              active={filters.status.length === 0}
+              sublabel={filters.status.length === 0 ? 'Todos os status' : 'Mostrar todos'}
+            />
+            {STATUS_KPIS.map(({ status, tone }) => {
+              const on = filters.status.includes(status);
+              return (
+                <KpiCard
+                  key={status}
+                  label={PROJECT_STATUS_META[status]?.label || status}
+                  value={statusCounts.counts[status] ?? 0}
+                  tone={tone}
+                  // Click filters the grid by this status; clicking it again removes the filter.
+                  onClick={() => setFilters({ status: on && filters.status.length === 1 ? [] : [status] })}
+                  active={on}
+                  sublabel={on ? 'Filtro ativo' : undefined}
+                />
+              );
+            })}
+          </div>
+
           <FilterPanel activeCount={activeCount} onClear={clearAll}>
             <div className="flex flex-wrap gap-3 items-end">
               <MultiSelect
