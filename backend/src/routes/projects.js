@@ -121,7 +121,7 @@ router.get('/:id', async (req, res, next) => {
 });
 
 const PROJECT_STATUSES = ['ANDAMENTO', 'CONCLUÍDO', 'CANCELADO', 'PARADO'];
-const PROJECT_PRIORITIES = ['ALTA', 'MEDIA', 'BAIXA'];
+const PRIORITY_MESSAGE = 'A prioridade deve ser um número inteiro de 1 a 999 (1 = mais prioritário).';
 
 const managerIdSchema = z.number({ required_error: MANAGER_REQUIRED_MESSAGE, invalid_type_error: MANAGER_REQUIRED_MESSAGE })
   .int(MANAGER_REQUIRED_MESSAGE).positive(MANAGER_REQUIRED_MESSAGE);
@@ -135,7 +135,8 @@ const upsertSchema = z.object({
   managerUserId: managerIdSchema,
   active: z.boolean().optional(),
   status: z.enum(PROJECT_STATUSES).optional(),
-  priority: z.enum(PROJECT_PRIORITIES).optional().nullable(),
+  // 1 = highest priority.
+  priority: z.number({ invalid_type_error: PRIORITY_MESSAGE }).int(PRIORITY_MESSAGE).min(1, PRIORITY_MESSAGE).max(999, PRIORITY_MESSAGE).optional().nullable(),
   notes: z.string().max(2000).optional().nullable(),
 });
 
@@ -158,7 +159,7 @@ router.post('/', requirePermission(PERMISSIONS.PROJECTS_MANAGE), async (req, res
     const info = await db.run(
       'INSERT INTO projects (name, description, manager_user_id, active, status, priority, notes, created_by_user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id',
       body.name, body.description || null, manager.id, body.active === false ? 0 : 1, body.status || 'ANDAMENTO',
-      body.priority || null, body.notes?.trim() || null, req.user.id
+      body.priority ?? null, body.notes?.trim() || null, req.user.id
     );
     await grantManagerScope(manager, info.lastInsertRowid);
     await auditService.record({

@@ -56,10 +56,10 @@ describe('Projects grid (PATCH priority/notes)', () => {
   it('updates priority and notes, clears them with null, and records an audit entry', async () => {
     const projectId = await createProject(db, 'Projeto Grid Prioridade');
 
-    const ok = await withAuth(request(app).patch(`/api/projects/${projectId}`), adminCookie).send({ priority: 'ALTA', notes: '  Aguardando orçamento  ' });
+    const ok = await withAuth(request(app).patch(`/api/projects/${projectId}`), adminCookie).send({ priority: 1, notes: '  Aguardando orçamento  ' });
     expect(ok.status).toBe(200);
     let row = await db.get('SELECT priority, notes, status FROM projects WHERE id = ?', projectId);
-    expect(row.priority).toBe('ALTA');
+    expect(row.priority).toBe(1);
     expect(row.notes).toBe('Aguardando orçamento');
     expect(row.status).toBe('ANDAMENTO');
 
@@ -69,7 +69,7 @@ describe('Projects grid (PATCH priority/notes)', () => {
     // Patching only notes keeps the priority.
     await withAuth(request(app).patch(`/api/projects/${projectId}`), adminCookie).send({ notes: 'Outra nota' });
     row = await db.get('SELECT priority, notes FROM projects WHERE id = ?', projectId);
-    expect(row.priority).toBe('ALTA');
+    expect(row.priority).toBe(1);
     expect(row.notes).toBe('Outra nota');
 
     const cleared = await withAuth(request(app).patch(`/api/projects/${projectId}`), adminCookie).send({ priority: null, notes: '' });
@@ -81,8 +81,10 @@ describe('Projects grid (PATCH priority/notes)', () => {
 
   it('rejects an invalid priority', async () => {
     const projectId = await createProject(db, 'Projeto Grid Prioridade Inválida');
-    const bad = await withAuth(request(app).patch(`/api/projects/${projectId}`), adminCookie).send({ priority: 'URGENTE' });
-    expect(bad.status).toBe(400);
+    for (const priority of ['ALTA', 0, 1.5, 1000]) {
+      const bad = await withAuth(request(app).patch(`/api/projects/${projectId}`), adminCookie).send({ priority });
+      expect(bad.status).toBe(400);
+    }
     const row = await db.get('SELECT priority FROM projects WHERE id = ?', projectId);
     expect(row.priority).toBeNull();
   });
@@ -93,7 +95,7 @@ describe('Projects grid (PATCH priority/notes)', () => {
   ])('blocks %s from editing priority/notes', async (email) => {
     const projectId = await createProject(db, `Projeto Grid Bloqueado ${email}`);
     const { cookie } = await login(app, email, 'Test@1234');
-    const res = await withAuth(request(app).patch(`/api/projects/${projectId}`), cookie).send({ priority: 'BAIXA', notes: 'não deveria salvar' });
+    const res = await withAuth(request(app).patch(`/api/projects/${projectId}`), cookie).send({ priority: 3, notes: 'não deveria salvar' });
     expect(res.status).toBe(403);
     const row = await db.get('SELECT priority, notes FROM projects WHERE id = ?', projectId);
     expect(row.priority).toBeNull();
