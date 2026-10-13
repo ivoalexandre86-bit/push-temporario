@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { api, downloadFile } from '../api/client';
 import { useActionFilters } from '../hooks/useActionFilters';
 import FilterBar from '../components/FilterBar';
+import { FilterToggleButton, useFiltersCollapsed } from '../components/FilterPanel';
 import StatusChip from '../components/StatusChip';
 import ColumnChooser, { usePersistentColumns, SortHeader, Chevron } from '../components/ColumnChooser';
 import ActionFormModal from '../components/ActionFormModal';
@@ -63,6 +64,7 @@ export default function ActionsList() {
   const [quickWidth, setQuickWidth] = useState(null);
   const { areas, people } = useCatalogs();
   const canCreate = hasPermission(PERMISSIONS.ACTIONS_CREATE);
+  const [filtersCollapsed, toggleFilters] = useFiltersCollapsed();
   const [visibleCols, setVisibleCols] = usePersistentColumns('acoes.grid.columns', COLUMNS, LOCKED_COLUMNS);
   const navigate = useNavigate();
   const defaultProjectId = filters.projectId?.length === 1 ? filters.projectId[0] : undefined;
@@ -118,6 +120,7 @@ export default function ActionsList() {
           <h1 className="text-xl font-bold text-gray-900">Ações</h1>
         </div>
         <div className="flex items-center gap-2">
+          <FilterToggleButton collapsed={filtersCollapsed} onToggle={toggleFilters} activeCount={activeCount} />
           <button onClick={() => handleExport('csv')} className="px-3 py-1.5 rounded-md border border-gray-300 text-sm text-gray-700 hover:bg-gray-50">CSV</button>
           <button onClick={() => handleExport('xlsx')} className="px-3 py-1.5 rounded-md border border-gray-300 text-sm text-gray-700 hover:bg-gray-50">XLSX</button>
           {canCreate && (
@@ -132,7 +135,11 @@ export default function ActionsList() {
         <ActionStatusKpis counts={data.statusCounts} selected={filters.status} onSelect={(status) => setFilters({ status })} />
       )}
 
-      <FilterBar filters={filters} setFilters={setFilters} clearAll={clearAll} activeCount={activeCount} />
+      {/* Filters live behind the "Filtros" button (minimized by default); the
+          KPIs take their place at the top of the page. */}
+      {!filtersCollapsed && (
+        <FilterBar filters={filters} setFilters={setFilters} clearAll={clearAll} activeCount={activeCount} collapsed={false} onToggle={toggleFilters} />
+      )}
 
       {loading && <Loading />}
       {error && !loading && <ErrorState message={error} />}
