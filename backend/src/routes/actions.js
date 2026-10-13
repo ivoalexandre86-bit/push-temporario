@@ -81,6 +81,13 @@ router.get('/', async (req, res, next) => {
     const countRow = await db.get(`SELECT COUNT(*) AS total ${BASE_FROM} WHERE ${where}`, ...params);
     const total = countRow.total;
 
+    // Status KPIs: every filter applies except the status one, so the other
+    // statuses keep their counts after the user clicks a KPI.
+    const kpiFilters = await buildActionFilters({ ...req.query, status: undefined }, req.user);
+    const statusRows = await db.all(`SELECT a.status, COUNT(*) AS n ${BASE_FROM} WHERE ${kpiFilters.where} GROUP BY a.status`, ...kpiFilters.params);
+    const statusCounts = Object.fromEntries(VALID_STATUSES.map((st) => [st, 0]));
+    for (const r of statusRows) statusCounts[r.status] = Number(r.n);
+
     const sortCol = sortBy === 'project_name' ? 'p.name' : sortBy === 'area_name' ? 'ar.name' : `a.${sortBy}`;
     const rows = await db.all(`
       SELECT a.*, p.name AS project_name, ar.name AS area_name, au.name AS assignee_name,
@@ -94,6 +101,7 @@ router.get('/', async (req, res, next) => {
     res.json({
       items: rows.map(shapeAction),
       page, pageSize, total, totalPages: Math.ceil(total / pageSize),
+      statusCounts,
       filters: filtersEcho,
     });
   } catch (err) { next(err); }

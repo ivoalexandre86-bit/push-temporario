@@ -8,9 +8,10 @@ import ColumnChooser, { usePersistentColumns, SortHeader, Chevron } from '../com
 import ActionFormModal from '../components/ActionFormModal';
 import QuickActionForm from '../components/QuickActionForm';
 import { useCatalogs } from '../hooks/useCatalogs';
+import KpiCard from '../components/KpiCard';
 import { Loading, ErrorState, EmptyState } from '../components/Loading';
 import { formatDate, formatHours, formatMonthYear } from '../utils/format';
-import { FLAG_LABELS, PERMISSIONS, STATUS_META, GRID_STATUS_COLORS, pillStyle } from '../utils/constants';
+import { FLAG_LABELS, PERMISSIONS, STATUSES, STATUS_META, GRID_STATUS_COLORS, pillStyle } from '../utils/constants';
 import { useAuth } from '../context/AuthContext';
 
 const COLUMNS = [
@@ -28,6 +29,8 @@ const COLUMNS = [
   { key: 'status', label: 'Status', sortKey: 'status' },
   { key: 'updatedAt', label: 'Atualizado', sortKey: 'updated_at' },
 ];
+
+const STATUS_KPI_TONES = { ANDAMENTO: 'blue', 'EM ESTUDO': 'amber', 'CONCLUÍDO': 'green', CANCELADO: 'red' };
 
 const LOCKED_COLUMNS = COLUMNS.filter((c) => c.locked).map((c) => c.key);
 
@@ -124,6 +127,10 @@ export default function ActionsList() {
           )}
         </div>
       </div>
+
+      {data?.statusCounts && (
+        <ActionStatusKpis counts={data.statusCounts} selected={filters.status} onSelect={(status) => setFilters({ status })} />
+      )}
 
       <FilterBar filters={filters} setFilters={setFilters} clearAll={clearAll} activeCount={activeCount} />
 
@@ -263,6 +270,37 @@ export default function ActionsList() {
       )}
 
       <ActionFormModal open={showNew} onClose={() => setShowNew(false)} onCreated={() => { setPage(1); setReloadKey((k) => k + 1); }} defaultProjectId={defaultProjectId} />
+    </div>
+  );
+}
+
+/** Clickable KPI per action status; counts ignore the status filter itself. */
+function ActionStatusKpis({ counts, selected, onSelect }) {
+  const total = STATUSES.reduce((sum, st) => sum + (counts[st] || 0), 0);
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-4">
+      <KpiCard
+        label="Ações"
+        value={total}
+        onClick={() => onSelect([])}
+        active={selected.length === 0}
+        sublabel={selected.length === 0 ? 'Todos os status' : 'Mostrar todos'}
+      />
+      {STATUSES.map((status) => {
+        const on = selected.includes(status);
+        return (
+          <KpiCard
+            key={status}
+            label={STATUS_META[status]?.label || status}
+            value={counts[status] ?? 0}
+            tone={STATUS_KPI_TONES[status]}
+            // Click filters the grid by this status; clicking it again removes the filter.
+            onClick={() => onSelect(on && selected.length === 1 ? [] : [status])}
+            active={on}
+            sublabel={on ? 'Filtro ativo' : undefined}
+          />
+        );
+      })}
     </div>
   );
 }
