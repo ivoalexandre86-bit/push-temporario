@@ -146,7 +146,7 @@ async function requireActiveProjectManager(userId) {
     SELECT u.id FROM users u JOIN roles r ON r.id = u.role_id
     WHERE u.id = ? AND u.active = 1 AND r.key IN ('ADMIN','PROJECT_MANAGER')
   `, userId);
-  if (!manager) throw new AppError(400, 'INVALID_PROJECT_MANAGER', 'Selecione um usuário ativo com papel de administrador ou gerente de projeto.');
+  if (!manager) throw new AppError(400, 'INVALID_PROJECT_MANAGER', 'Selecione um usuário ativo com papel de Administrador ou Gerente de Projeto.');
 }
 
 router.post('/', requirePermission(PERMISSIONS.PROJECTS_MANAGE), async (req, res, next) => {

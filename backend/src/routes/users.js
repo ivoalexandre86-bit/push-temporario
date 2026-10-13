@@ -138,7 +138,10 @@ router.post('/:id/reset-password', async (req, res, next) => {
     if (!user) throw new AppError(404, 'NOT_FOUND', 'Usuário não encontrado.');
     const tempPassword = Math.random().toString(36).slice(2, 10) + 'Aa1!';
     const hash = bcrypt.hashSync(tempPassword, 10);
-    await db.run('UPDATE users SET password_hash = ?, must_change_password = 1, failed_login_count = 0, locked_until = NULL WHERE id = ?', hash, id);
+    // password_changed_at changes -> every session this user had open ends.
+    const nowIso = new Date().toISOString();
+    await db.run('UPDATE users SET password_hash = ?, password_changed_at = ?, must_change_password = 1, failed_login_count = 0, locked_until = NULL, updated_at = ? WHERE id = ?', hash, nowIso, nowIso, id);
+    await db.run('UPDATE password_reset_tokens SET used_at = ? WHERE user_id = ? AND used_at IS NULL', nowIso, id);
     await auditService.record({ entityType: 'USER', entityId: id, actionType: 'PASSWORD_RESET_BY_ADMIN', actor: req.user, req });
     res.json({ temporaryPassword: tempPassword });
   } catch (err) {

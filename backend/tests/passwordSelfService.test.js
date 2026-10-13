@@ -238,3 +238,15 @@ describe('Envio do e-mail de redefinição', () => {
     }
   });
 });
+
+describe('Redefinição de senha pelo administrador', () => {
+  it('ends every session the user had open', async () => {
+    const id = await createUser(db, { name: 'Reset Admin', email: 'reset.admin@empresa.com', roleKey: 'VIEWER' });
+    const { cookie: userSession } = await login(app, 'reset.admin@empresa.com');
+    const { cookie: adminCookie } = await login(app, 'admin@projetos.local');
+    const res = await withAuth(request(app).post(`/api/users/${id}/reset-password`), adminCookie);
+    expect(res.status).toBe(200);
+    expect((await withAuth(request(app).get('/api/me'), userSession)).status).toBe(401);
+    await login(app, 'reset.admin@empresa.com', res.body.temporaryPassword);
+  });
+});
