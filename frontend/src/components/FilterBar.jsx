@@ -5,14 +5,14 @@ import { STATUSES, STATUS_META, PROJECT_STATUSES, PROJECT_STATUS_META } from '..
 import { useCatalogs } from '../hooks/useCatalogs';
 import { formatMonthYear } from '../utils/format';
 
-export default function FilterBar({ filters, setFilters, clearAll, activeCount }) {
+export default function FilterBar({ filters, setFilters, clearAll, activeCount, collapsed, onToggle }) {
   const { projects, areas, people, refMonths } = useCatalogs();
   const [showMore, setShowMore] = useState(false);
 
   const years = Array.from({ length: 6 }, (_, i) => String(2023 + i));
 
   return (
-    <FilterPanel activeCount={activeCount} onClear={clearAll}>
+    <FilterPanel activeCount={activeCount} onClear={clearAll} collapsed={collapsed} onToggle={onToggle}>
       <div className="flex flex-wrap gap-3 items-end">
         <MultiSelect
           label="Projeto"

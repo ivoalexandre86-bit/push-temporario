@@ -7,6 +7,7 @@ export const AUDIT_ENTITY_LABELS = {
   ACTION: 'Ação',
   PROJECT: 'Projeto',
   AREA: 'Área/Processo',
+  PERSON: 'Responsável',
   USER: 'Usuário',
   TIME_ENTRY: 'Lançamento de horas',
   AUTH: 'Acesso (login)',
