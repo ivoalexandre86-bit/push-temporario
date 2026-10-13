@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { Loading, ErrorState, EmptyState } from '../components/Loading';
 import MultiSelect from '../components/MultiSelect';
+import FilterPanel from '../components/FilterPanel';
 import ProjectFormModal from '../components/ProjectFormModal';
 import ColumnChooser, { usePersistentColumns, SortHeader, Chevron } from '../components/ColumnChooser';
 import { useAuth } from '../context/AuthContext';
@@ -304,7 +305,7 @@ export default function ProjectsList() {
         <EmptyState title="Nenhum projeto disponível" description="Você ainda não tem acesso a nenhum projeto." />
       ) : (
         <>
-          <div className="bg-white border border-[var(--color-border)] rounded-xl p-3 md:p-4 mb-4">
+          <FilterPanel activeCount={activeCount} onClear={clearAll}>
             <div className="flex flex-wrap gap-3 items-end">
               <MultiSelect
                 label="Projeto"
@@ -354,17 +355,9 @@ export default function ProjectsList() {
               {checkbox('soon', 'Prazo nos próximos 7 dias')}
               <div className="ml-auto flex items-center gap-3 text-sm">
                 <span className="text-gray-500">{visible.length} de {projects.length} projetos</span>
-                <button
-                  type="button"
-                  onClick={clearAll}
-                  disabled={activeCount === 0}
-                  className="text-blue-600 hover:underline font-medium disabled:text-gray-300 disabled:no-underline disabled:cursor-not-allowed"
-                >
-                  Limpar filtros
-                </button>
               </div>
             </div>
-          </div>
+          </FilterPanel>
 
           <div className="dg">
             <div className="overflow-x-auto scrollbar-thin">

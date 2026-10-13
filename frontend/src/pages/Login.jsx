@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useLocation } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 
 export default function Login() {
-  const { login } = useAuth();
-  const navigate = useNavigate();
+  const { login, user } = useAuth();
   const location = useLocation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -19,7 +18,10 @@ export default function Login() {
     api.get('/auth/login-hints').then(setHints).catch(() => {});
   }, []);
 
-  const from = location.state?.from?.pathname || '/dashboard';
+  // Where to go once signed in: the page that asked for login, or the Painel
+  // (the app's start screen) when there was none or it was the root.
+  const requested = location.state?.from;
+  const from = requested && requested.pathname !== '/' ? `${requested.pathname}${requested.search || ''}` : '/dashboard';
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -27,13 +29,16 @@ export default function Login() {
     setLoading(true);
     try {
       await login(email, password);
-      navigate(from, { replace: true });
+      // The signed-in redirect below takes over once the user is set.
     } catch (err) {
       setError(err.message || 'Não foi possível entrar. Verifique suas credenciais.');
     } finally {
       setLoading(false);
     }
   };
+
+  // Already signed in (e.g. the installed app opened on /login): go straight in.
+  if (user) return <Navigate to={from} replace />;
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-[var(--color-bg)] px-4">
