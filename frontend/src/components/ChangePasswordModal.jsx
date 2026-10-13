@@ -25,6 +25,10 @@ export default function ChangePasswordModal({ open, onClose }) {
       setError('A nova senha deve ter ao menos 8 caracteres.');
       return;
     }
+    if (form.newPassword === form.currentPassword) {
+      setError('A nova senha deve ser diferente da senha atual.');
+      return;
+    }
     if (form.newPassword !== form.confirmPassword) {
       setError('A confirmação não corresponde à nova senha.');
       return;
@@ -34,6 +38,7 @@ export default function ChangePasswordModal({ open, onClose }) {
       await api.post('/me/change-password', {
         currentPassword: form.currentPassword,
         newPassword: form.newPassword,
+        confirmPassword: form.confirmPassword,
       });
       toast.success('Senha alterada com sucesso.');
       onClose();

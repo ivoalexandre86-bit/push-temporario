@@ -12,6 +12,16 @@ const loginLimiter = rateLimit({
   message: { error: 'RATE_LIMITED', message: 'Muitas tentativas de login. Tente novamente em alguns minutos.' },
 });
 
+// "Esqueci minha senha": each request may send an e-mail, so it gets its own,
+// stricter budget (separate from the login counter).
+const passwordResetLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: process.env.NODE_ENV === 'test' ? 100000 : (Number(process.env.RATE_LIMIT_PASSWORD_RESET_MAX) || 5),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'RATE_LIMITED', message: 'Muitas solicitações de redefinição de senha. Tente novamente em alguns minutos.' },
+});
+
 // Looser general-purpose limiter for the whole API.
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000,
@@ -21,4 +31,4 @@ const apiLimiter = rateLimit({
   message: { error: 'RATE_LIMITED', message: 'Muitas requisições. Tente novamente em instantes.' },
 });
 
-module.exports = { loginLimiter, apiLimiter };
+module.exports = { loginLimiter, passwordResetLimiter, apiLimiter };

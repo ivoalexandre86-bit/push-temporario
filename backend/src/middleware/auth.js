@@ -7,7 +7,9 @@ const ACCESS_COOKIE = 'projetos_at';
 
 function signAccessToken(user) {
   return jwt.sign(
-    { sub: user.id, roleKey: user.role_key, name: user.name, email: user.email },
+    // pwc = when the password last changed; a token minted before a password
+    // change/reset no longer matches and is rejected (see sessionStillValid).
+    { sub: user.id, roleKey: user.role_key, name: user.name, email: user.email, pwc: user.password_changed_at || null },
     jwtSecret(),
     { expiresIn: ACCESS_TOKEN_TTL }
   );
@@ -29,11 +31,15 @@ function clearAuthCookie(res) {
 
 async function getUserWithRole(id) {
   return db.get(
-    `SELECT u.id, u.name, u.email, u.active, r.key AS role_key, r.name AS role_name
+    `SELECT u.id, u.name, u.email, u.active, u.password_changed_at, r.key AS role_key, r.name AS role_name
      FROM users u JOIN roles r ON r.id = u.role_id
      WHERE u.id = ?`,
     id
   );
+}
+
+function sessionStillValid(payload, user) {
+  return (payload.pwc || null) === (user.password_changed_at || null);
 }
 
 /** Populates req.user from the access-token cookie (or Bearer header, for API clients). */
@@ -47,6 +53,9 @@ async function authenticate(req, res, next) {
     const user = await getUserWithRole(payload.sub);
     if (!user || !user.active || (isDemoEmail(user.email) && !demoLoginAllowed())) {
       return res.status(401).json({ error: 'NOT_AUTHENTICATED', message: 'Usuário inativo ou não encontrado.' });
+    }
+    if (!sessionStillValid(payload, user)) {
+      return res.status(401).json({ error: 'SESSION_EXPIRED', message: 'Sua senha foi alterada. Faça login novamente.' });
     }
     req.user = user;
     next();
@@ -62,7 +71,7 @@ async function optionalAuthenticate(req, res, next) {
   try {
     const payload = jwt.verify(token, jwtSecret());
     const user = await getUserWithRole(payload.sub);
-    if (user && user.active && !(isDemoEmail(user.email) && !demoLoginAllowed())) req.user = user;
+    if (user && user.active && !(isDemoEmail(user.email) && !demoLoginAllowed()) && sessionStillValid(payload, user)) req.user = user;
   } catch (_) {
     /* ignore */
   }

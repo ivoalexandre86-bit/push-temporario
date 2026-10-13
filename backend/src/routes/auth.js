@@ -4,8 +4,10 @@ const crypto = require('crypto');
 const { z } = require('zod');
 const db = require('../db/connection');
 const { signAccessToken, setAuthCookie, clearAuthCookie, authenticate } = require('../middleware/auth');
-const { loginLimiter } = require('../middleware/rateLimiters');
+const { loginLimiter, passwordResetLimiter } = require('../middleware/rateLimiters');
 const auditService = require('../services/auditService');
+const mailService = require('../services/mailService');
+const { newPasswordSchema, hashPassword } = require('../services/passwordPolicy');
 const { AppError } = require('../middleware/errorHandler');
 const { DEMO_ACCOUNTS, isDemoEmail, demoLoginAllowed, demoPassword, isProduction } = require('../config');
 
@@ -115,56 +117,101 @@ router.post('/logout', authenticate, async (req, res) => {
   res.json({ ok: true });
 });
 
-const forgotSchema = z.object({ email: z.string().email() });
+const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hora
 
-router.post('/forgot-password', loginLimiter, async (req, res, next) => {
+function hashResetToken(rawToken) {
+  return crypto.createHash('sha256').update(rawToken).digest('hex');
+}
+
+const forgotSchema = z.object({ email: z.string().trim().email('Informe um e-mail válido.') });
+
+router.post('/forgot-password', passwordResetLimiter, async (req, res, next) => {
   try {
     const { email } = forgotSchema.parse(req.body);
+    // Always the same answer (and no token in the body), so the endpoint
+    // never reveals whether an e-mail is registered.
+    const genericResponse = { ok: true, message: 'Se o e-mail estiver cadastrado, você receberá em instantes um link para redefinir a senha.' };
+
     const user = await getUserByEmail(email);
-    // Always respond the same way to avoid leaking which emails exist.
-    const genericResponse = { ok: true, message: 'Se o e-mail existir em nossa base, um link de redefinição foi enviado.' };
-    if (!user) return res.json(genericResponse);
+    const eligible = user && user.active && user.password_hash && !(isDemoEmail(user.email) && !demoLoginAllowed());
+    if (!eligible) {
+      await auditService.record({ entityType: 'AUTH', entityId: email, actionType: 'PASSWORD_RESET_REQUESTED', actor: null, req, newValue: 'ignored: no eligible account' });
+      return res.json(genericResponse);
+    }
 
+    // Only the SHA-256 hash is stored; the raw token exists only in the e-mail.
     const rawToken = crypto.randomBytes(32).toString('hex');
-    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
-    const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
-
-    await db.run('INSERT INTO password_reset_tokens (user_id, token_hash, expires_at) VALUES (?, ?, ?)', user.id, tokenHash, expiresAt);
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + RESET_TOKEN_TTL_MS).toISOString();
+    await db.transaction(async (tx) => {
+      // A new request supersedes any earlier link still pending, and expired rows are cleaned up.
+      await tx.run('UPDATE password_reset_tokens SET used_at = ? WHERE user_id = ? AND used_at IS NULL', now.toISOString(), user.id);
+      await tx.run('DELETE FROM password_reset_tokens WHERE expires_at < ?', new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString());
+      await tx.run('INSERT INTO password_reset_tokens (user_id, token_hash, expires_at) VALUES (?, ?, ?)', user.id, hashResetToken(rawToken), expiresAt);
+    });
 
     await auditService.record({ entityType: 'AUTH', entityId: user.id, actionType: 'PASSWORD_RESET_REQUESTED', actor: { id: user.id, name: user.name }, req });
 
-    // No email transport is configured in this environment. In non-production
-    // deployments we surface the raw token so the flow can be exercised
-    // end-to-end; wire an email provider (SES/SendGrid/etc.) and drop this
-    // field in production.
-    if (process.env.NODE_ENV !== 'production') {
-      return res.json({ ...genericResponse, devToken: rawToken });
-    }
+    // Sent in the background: waiting for the SMTP server would make the
+    // response time differ between registered and unknown e-mails.
+    mailService.sendPasswordResetEmail({ to: user.email, name: user.name, rawToken })
+      .catch((err) => console.error('[mail] falha ao enviar e-mail de redefinição de senha:', err.message));
+
     res.json(genericResponse);
   } catch (err) {
     next(err);
   }
 });
 
+const INVALID_RESET_LINK = 'Link de redefinição inválido ou expirado. Solicite um novo.';
+
 const resetSchema = z.object({
-  token: z.string().min(10),
-  newPassword: z.string().min(8, 'A senha deve ter ao menos 8 caracteres.'),
+  token: z.string().trim().regex(/^[0-9a-f]{64}$/i, INVALID_RESET_LINK),
+  newPassword: newPasswordSchema,
+  confirmPassword: z.string().optional(),
+}).refine((b) => b.confirmPassword === undefined || b.confirmPassword === b.newPassword, {
+  message: 'A confirmação não corresponde à nova senha.',
+  path: ['confirmPassword'],
+});
+
+/** Lets the reset screen tell the user up front that a link is no longer valid. */
+router.get('/reset-password/validate', loginLimiter, async (req, res, next) => {
+  try {
+    const token = String(req.query.token || '').trim();
+    const row = /^[0-9a-f]{64}$/i.test(token)
+      ? await db.get('SELECT id FROM password_reset_tokens WHERE token_hash = ? AND used_at IS NULL AND expires_at > ?', hashResetToken(token), new Date().toISOString())
+      : null;
+    res.json({ valid: !!row });
+  } catch (err) {
+    next(err);
+  }
 });
 
 router.post('/reset-password', loginLimiter, async (req, res, next) => {
   try {
     const { token, newPassword } = resetSchema.parse(req.body);
-    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
-    const row = await db.get('SELECT * FROM password_reset_tokens WHERE token_hash = ?', tokenHash);
-    if (!row || row.used_at || new Date(row.expires_at) < new Date()) {
-      throw new AppError(400, 'INVALID_TOKEN', 'Link de redefinição inválido ou expirado.');
-    }
-    const passwordHash = bcrypt.hashSync(newPassword, 10);
-    await db.run('UPDATE users SET password_hash = ?, must_change_password = 0, failed_login_count = 0, locked_until = NULL WHERE id = ?', passwordHash, row.user_id);
-    await db.run('UPDATE password_reset_tokens SET used_at = ? WHERE id = ?', new Date().toISOString(), row.id);
-    const user = await db.get('SELECT id, name FROM users WHERE id = ?', row.user_id);
-    await auditService.record({ entityType: 'AUTH', entityId: row.user_id, actionType: 'PASSWORD_RESET', actor: user, req });
-    res.json({ ok: true, message: 'Senha redefinida com sucesso. Você já pode fazer login.' });
+    const nowIso = new Date().toISOString();
+    const passwordHash = hashPassword(newPassword);
+
+    const userId = await db.transaction(async (tx) => {
+      // Claim the token atomically: a second use (or a concurrent one) finds nothing.
+      const claimed = await tx.run(
+        'UPDATE password_reset_tokens SET used_at = ? WHERE token_hash = ? AND used_at IS NULL AND expires_at > ? RETURNING user_id',
+        nowIso, hashResetToken(token), nowIso
+      );
+      const id = claimed.rows[0]?.user_id;
+      if (!id) throw new AppError(400, 'INVALID_TOKEN', INVALID_RESET_LINK);
+      await tx.run(
+        'UPDATE users SET password_hash = ?, password_changed_at = ?, must_change_password = 0, failed_login_count = 0, locked_until = NULL, updated_at = ? WHERE id = ?',
+        passwordHash, nowIso, nowIso, id
+      );
+      await tx.run('UPDATE password_reset_tokens SET used_at = ? WHERE user_id = ? AND used_at IS NULL', nowIso, id);
+      return id;
+    });
+
+    const user = await db.get('SELECT id, name FROM users WHERE id = ?', userId);
+    await auditService.record({ entityType: 'AUTH', entityId: userId, actionType: 'PASSWORD_RESET', actor: user, req });
+    res.json({ ok: true, message: 'Senha redefinida com sucesso. Você já pode entrar com a nova senha.' });
   } catch (err) {
     next(err);
   }
