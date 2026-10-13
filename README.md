@@ -469,11 +469,12 @@ dessas etapas já vêm resolvidas pelo `render.yaml`, marcadas abaixo):
       recebe um domínio `*.onrender.com` com HTTPS); se publicar em outro
       provedor sem HTTPS gerenciado, configure um proxy reverso com
       certificado antes de divulgar a URL.
-- [ ] **Envio de e-mail para redefinição de senha**: continua não configurado
-      (ver [Limitações conhecidas](#limitações-conhecidas-e-próximos-passos)
-      abaixo) — o token de redefinição volta na própria resposta da API, o
-      que é aceitável apenas enquanto o acesso ao sistema for restrito a
-      pessoas de confiança.
+- [ ] **Envio de e-mail para redefinição de senha** ("Esqueci minha senha"):
+      preencha no painel do Render (Environment) `SMTP_HOST`, `SMTP_PORT`,
+      `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM` e `APP_URL` (URL
+      pública do sistema, usada no link). Sem `SMTP_HOST` nenhum e-mail é
+      enviado; o token nunca volta na resposta da API (em desenvolvimento o
+      link aparece só no log do servidor).
 - [ ] **Backups do Postgres**: o plano pago do Render inclui backups
       automáticos diários; confirme a política de retenção no painel do
       banco e considere exportar um dump manual (`pg_dump`) antes de
@@ -485,11 +486,11 @@ Este é um sistema completo e funcional, mas algumas simplificações foram
 feitas conscientemente para caber no escopo desta entrega — o modelo de dados
 foi desenhado para suportar todas elas sem quebrar mudanças:
 
-- **Envio de e-mail** (redefinição de senha, notificações) não está
-  configurado — em ambiente de desenvolvimento, o token de redefinição é
-  devolvido diretamente na resposta da API/tela para permitir testar o fluxo
-  ponta a ponta; em produção, basta plugar um provedor (SES, SendGrid, etc.)
-  no lugar do `TODO` em `backend/src/routes/auth.js`.
+- **Envio de e-mail**: só a redefinição de senha envia e-mail (SMTP via
+  nodemailer, configurado por variáveis de ambiente — ver `.env.example`).
+  O link vale 1 hora, é de uso único e o banco guarda apenas o hash do token;
+  trocar/redefinir a senha encerra as sessões abertas antes. Notificações
+  por e-mail ainda não existem.
 - **SSO**: a tabela `users` já tem a coluna `sso_subject` e a arquitetura de
   autenticação foi isolada em middleware próprio, pronta para adicionar um
   provedor OIDC/SAML sem alterar o restante do sistema.

@@ -23,10 +23,14 @@ router.use(requirePermission(PERMISSIONS.ACTIONS_VIEW));
 
 const VALID_STATUSES = ['ANDAMENTO', 'CANCELADO', 'CONCLUÍDO', 'EM ESTUDO'];
 const VALID_SORT = new Set(['business_id', 'ref_month', 'start_date', 'due_date', 'completion_date', 'status', 'updated_at', 'project_name', 'area_name']);
-const dateField = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use uma data válida.').refine((value) => {
-  const date = new Date(`${value}T00:00:00.000Z`);
-  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
-}, 'Use uma data válida.');
+// Same pt-BR message as validateActionDates (utils/dates), naming the field.
+const dateField = (label) => {
+  const message = `${label} inválida: use uma data real no formato dd/mm/aaaa.`;
+  return z.string().regex(/^\d{4}-\d{2}-\d{2}$/, message).refine((value) => {
+    const date = new Date(`${value}T00:00:00.000Z`);
+    return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+  }, message);
+};
 
 function checkActionDateOrder(values, changedFields = null) {
   const { startDate, dueDate, completionDate } = values;
@@ -220,9 +224,9 @@ const createSchema = z.object({
   unassigned: z.boolean().optional(),
   assigneeUserId: z.number().optional().nullable(),
   plannedHours: z.number().nonnegative().optional().nullable(),
-  startDate: dateField.optional().nullable(),
-  dueDate: dateField.optional().nullable(),
-  completionDate: dateField.optional().nullable(),
+  startDate: dateField('Data de início').optional().nullable(),
+  dueDate: dateField('Prazo').optional().nullable(),
+  completionDate: dateField('Data de conclusão').optional().nullable(),
   status: z.enum(VALID_STATUSES),
   observations: z.string().optional().nullable(),
   cancellationReason: z.string().optional().nullable(),
@@ -281,9 +285,9 @@ const updateSchema = z.object({
   unassigned: z.boolean().optional(),
   assigneeUserId: z.number().optional().nullable(),
   plannedHours: z.number().nonnegative().optional().nullable(),
-  startDate: dateField.optional().nullable(),
-  dueDate: dateField.optional().nullable(),
-  completionDate: dateField.optional().nullable(),
+  startDate: dateField('Data de início').optional().nullable(),
+  dueDate: dateField('Prazo').optional().nullable(),
+  completionDate: dateField('Data de conclusão').optional().nullable(),
   status: z.enum(VALID_STATUSES).optional(),
   observations: z.string().optional().nullable(),
   cancellationReason: z.string().optional().nullable(),

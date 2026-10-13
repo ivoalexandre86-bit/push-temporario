@@ -61,6 +61,22 @@ services:
         sync: false  # Melhoria 5 (reescrever com IA) - cole a chave manualmente no painel do Render (Environment); gere em console.anthropic.com
       - key: ANTHROPIC_MODEL
         value: claude-sonnet-4-5-20250929
+      # "Esqueci minha senha" (e-mail de redefinição via SMTP). Preencha no
+      # painel do Render (Environment); sem SMTP_HOST nenhum e-mail é enviado.
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false  # ex.: 587 (STARTTLS) ou 465 (TLS)
+      - key: SMTP_SECURE
+        sync: false  # "true" para a porta 465, "false" para 587
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: MAIL_FROM
+        sync: false  # ex.: Sistema de Projetos <nao-responda@suaempresa.com>
+      - key: APP_URL
+        sync: false  # URL pública do sistema, ex.: https://projetos-web.onrender.com
       # Demo users are disabled in production unless explicitly enabled for an
       # isolated demo deployment. Never commit demo passwords or migration tokens.
       - key: ALLOW_DEMO_LOGIN

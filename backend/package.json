@@ -17,23 +17,24 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",
-    "pg": "^8.23.0",
     "bcryptjs": "^2.4.3",
     "cookie-parser": "^1.4.6",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
+    "exceljs": "^4.4.0",
     "express": "^4.19.2",
     "express-rate-limit": "^7.4.0",
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.0.0",
+    "nodemailer": "^10.1.0",
+    "pg": "^8.23.0",
     "uuid": "^9.0.1",
-    "exceljs": "^4.4.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
-    "supertest": "^7.0.0",
-    "vitest": "^3.2.6",
     "@electric-sql/pglite": "^0.5.8",
-    "@electric-sql/pglite-socket": "^0.2.11"
+    "@electric-sql/pglite-socket": "^0.2.11",
+    "supertest": "^7.0.0",
+    "vitest": "^3.2.6"
   }
 }

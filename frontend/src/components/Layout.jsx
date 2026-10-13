@@ -3,6 +3,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { PERMISSIONS, ROLE_LABELS } from '../utils/constants';
 import ChangePasswordModal from './ChangePasswordModal';
+import ProfileModal from './ProfileModal';
 
 const NAV_ITEMS = [
   { to: '/dashboard', label: 'Painel', icon: '📊' },
@@ -20,6 +21,7 @@ export default function Layout() {
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
 
   const handleLogout = async () => {
     await logout();
@@ -58,15 +60,17 @@ export default function Layout() {
             <span className="font-semibold text-gray-800 md:hidden">Gestão de Projetos</span>
           </div>
           <div className="flex items-center gap-3 text-sm">
-            <div className="text-right hidden sm:block">
-              <div className="font-medium text-gray-800">{user?.name}</div>
-              <div className="text-xs text-gray-500">{ROLE_LABELS[user?.role] || user?.role}</div>
-            </div>
-            <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-semibold" aria-hidden="true">
-              {user?.name?.[0]?.toUpperCase() || '?'}
-            </div>
-            <button onClick={() => setShowChangePassword(true)} className="px-3 py-1.5 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm hidden sm:inline-block">
-              Alterar senha
+            <button onClick={() => setShowProfile(true)} title="Meu perfil" aria-label="Meu perfil" className="flex items-center gap-3 rounded-md px-1 py-1 hover:bg-gray-50">
+              <span className="text-right hidden sm:block">
+                <span className="block font-medium text-gray-800">{user?.name}</span>
+                <span className="block text-xs text-gray-500">{ROLE_LABELS[user?.role] || user?.role}</span>
+              </span>
+              <span className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-semibold" aria-hidden="true">
+                {user?.name?.[0]?.toUpperCase() || '?'}
+              </span>
+            </button>
+            <button onClick={() => setShowProfile(true)} className="px-3 py-1.5 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm hidden sm:inline-block">
+              Meu perfil
             </button>
             <button onClick={handleLogout} className="ml-1 px-3 py-1.5 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm">
               Sair
@@ -78,6 +82,11 @@ export default function Layout() {
         </main>
       </div>
 
+      <ProfileModal
+        open={showProfile}
+        onClose={() => setShowProfile(false)}
+        onChangePassword={() => { setShowProfile(false); setShowChangePassword(true); }}
+      />
       <ChangePasswordModal open={showChangePassword} onClose={() => setShowChangePassword(false)} />
     </div>
   );

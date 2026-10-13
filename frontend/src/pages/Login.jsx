@@ -48,6 +48,11 @@ export default function Login() {
           <p className="text-sm text-gray-500 mt-1">Entre com sua conta para continuar</p>
         </div>
         <form onSubmit={handleSubmit} className="bg-white border border-[var(--color-border)] rounded-xl p-6 shadow-sm space-y-4" noValidate>
+          {location.state?.notice && !error && (
+            <div role="status" className="rounded-md bg-green-50 text-green-700 text-sm px-3 py-2 border border-green-200">
+              {location.state.notice}
+            </div>
+          )}
           {error && (
             <div role="alert" className="rounded-md bg-red-50 text-red-700 text-sm px-3 py-2 border border-red-200">
               {error}
