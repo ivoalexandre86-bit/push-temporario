@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, downloadFile } from '../api/client';
 import { useActionFilters } from '../hooks/useActionFilters';
@@ -7,8 +7,7 @@ import { FilterToggleButton, useFiltersCollapsed } from '../components/FilterPan
 import StatusChip from '../components/StatusChip';
 import ColumnChooser, { usePersistentColumns, SortHeader, Chevron } from '../components/ColumnChooser';
 import ActionFormModal from '../components/ActionFormModal';
-import QuickActionForm from '../components/QuickActionForm';
-import { useCatalogs } from '../hooks/useCatalogs';
+import QuickActionForm, { QuickActionRow } from '../components/QuickActionForm';
 import KpiCard from '../components/KpiCard';
 import { Loading, ErrorState, EmptyState } from '../components/Loading';
 import { formatDate, formatHours, formatMonthYear } from '../utils/format';
@@ -59,10 +58,6 @@ export default function ActionsList() {
   // uuid of the action whose inline "nova ação" form is open (one at a time).
   const [quickFrom, setQuickFrom] = useState(null);
   const [reloadKey, setReloadKey] = useState(0);
-  // The grid scrolls sideways; the inline form is pinned to the visible width.
-  const gridScrollRef = useRef(null);
-  const [quickWidth, setQuickWidth] = useState(null);
-  const { areas, people } = useCatalogs();
   const canCreate = hasPermission(PERMISSIONS.ACTIONS_CREATE);
   const [filtersCollapsed, toggleFilters] = useFiltersCollapsed();
   const [visibleCols, setVisibleCols] = usePersistentColumns('acoes.grid.columns', COLUMNS, LOCKED_COLUMNS);
@@ -151,7 +146,7 @@ export default function ActionsList() {
         <>
           {/* Desktop table */}
           <div className="hidden md:block dg">
-            <div ref={gridScrollRef} className="overflow-x-auto scrollbar-thin">
+            <div className="overflow-x-auto scrollbar-thin">
               <table>
                 <thead>
                   <tr>
@@ -194,7 +189,6 @@ export default function ActionsList() {
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              setQuickWidth(gridScrollRef.current?.clientWidth || null);
                               setQuickFrom((u) => (u === item.uuid ? null : item.uuid));
                             }}
                             className="dg-chevron dg-add"
@@ -209,13 +203,7 @@ export default function ActionsList() {
                       </td>
                     </tr>
                     {quickFrom === item.uuid && (
-                      <tr className="dg-quick">
-                        <td colSpan={cols.length + 1}>
-                          <div className="sticky left-0" style={{ width: quickWidth ? quickWidth - 24 : undefined }}>
-                          <QuickActionForm source={item} areas={areas} people={people} onCreated={handleQuickCreated} onCancel={() => setQuickFrom(null)} />
-                          </div>
-                        </td>
-                      </tr>
+                      <QuickActionRow source={item} visibleCols={visibleCols} onCreated={handleQuickCreated} onCancel={() => setQuickFrom(null)} />
                     )}
                     </Fragment>
                   ))}
@@ -254,7 +242,7 @@ export default function ActionsList() {
               )}
               {quickFrom === item.uuid && (
                 <div className="mt-2 border border-[var(--color-border)] rounded-xl">
-                  <QuickActionForm source={item} areas={areas} people={people} onCreated={handleQuickCreated} onCancel={() => setQuickFrom(null)} />
+                  <QuickActionForm source={item} onCreated={handleQuickCreated} onCancel={() => setQuickFrom(null)} />
                 </div>
               )}
               </div>

@@ -131,7 +131,7 @@ a { color: inherit; }
 .dg .dg-chevron:hover { background: #243049; color: var(--dg-text); }
 .dg .dg-add { font-size: 1.15rem; font-weight: 600; color: #60a5fa; margin-right: 0.25rem; }
 .dg tbody tr.dg-quick, .dg tbody tr.dg-quick:hover { background: var(--dg-head); }
-.dg tbody tr.dg-quick td { padding: 0.5rem 0.75rem; }
+.dg tbody tr.dg-quick td:first-child { box-shadow: inset 3px 0 0 #3b82f6; }
 .dg .dg-input {
   background: transparent;
   color: var(--dg-text);
