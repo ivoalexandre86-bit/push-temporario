@@ -14,6 +14,7 @@ import {
   GRID_STATUS_COLORS, pillStyle,
 } from '../utils/constants';
 import { formatDate, formatPercent } from '../utils/format';
+import bannerImg from '../assets/projetos-banner.jpg';
 
 const NONE = 'none';
 
@@ -341,17 +342,36 @@ export default function ProjectsList() {
 
   return (
     <div>
-      <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
-        <h1 className="text-xl font-bold text-gray-900">Projetos</h1>
-        <div className="flex items-center gap-2">
-          {projects.length > 0 && (
-            <FilterToggleButton collapsed={filtersCollapsed} onToggle={toggleFilters} activeCount={activeCount} />
-          )}
-          {canEdit && (
-            <button onClick={() => setShowNew(true)} className="px-3 py-1.5 rounded-md bg-blue-600 text-white text-sm font-medium hover:bg-blue-700">
-              + Novo projeto
-            </button>
-          )}
+      {/* Banner: background illustration with the page title, subtitle and motto. */}
+      <div
+        className="relative overflow-hidden rounded-xl mb-4 text-white bg-[#0a1630] bg-cover bg-right"
+        style={{ backgroundImage: `url(${bannerImg})` }}
+      >
+        {/* Darkens the photo behind the text so it stays readable at any width. */}
+        <div className="absolute inset-0 bg-[#081024]/70 sm:bg-transparent sm:bg-linear-to-r sm:from-[#081024]/85 sm:via-[#081024]/20 sm:to-[#081024]/60" />
+        <div className="relative flex flex-wrap items-end justify-between gap-4 px-5 py-6 sm:px-8 sm:py-8 min-h-[150px]">
+          <div>
+            <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">Projetos</h1>
+            <p className="mt-1 text-sm sm:text-base text-blue-100/90">
+              Acompanhe o andamento dos projetos e mantenha o foco nos resultados.
+            </p>
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              {projects.length > 0 && (
+                <span className="rounded-md bg-white">
+                  <FilterToggleButton collapsed={filtersCollapsed} onToggle={toggleFilters} activeCount={activeCount} />
+                </span>
+              )}
+              {canEdit && (
+                <button onClick={() => setShowNew(true)} className="px-3 py-1.5 rounded-md bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 shadow">
+                  + Novo projeto
+                </button>
+              )}
+            </div>
+          </div>
+          <blockquote className="hidden md:block text-right text-lg font-medium leading-snug text-white/95 drop-shadow">
+            “Planejamento hoje,<br />resultados amanhã.”
+            <span className="block ml-auto mt-2 h-0.5 w-10 rounded bg-blue-400" />
+          </blockquote>
         </div>
       </div>
 
