@@ -479,7 +479,7 @@ export default function ProjectsList() {
                     const cells = {
                       name: (
                         <div className="flex items-center gap-2">
-                          <Link to={`/projetos/${p.id}`} className="dg-link whitespace-nowrap">{p.name}</Link>
+                          <Link to={`/acoes?projectId=${p.id}`} className="dg-link whitespace-nowrap">{p.name}</Link>
                           {!p.active && <span className="dg-pill" style={pillStyle('#94a3b8')}>Inativo</span>}
                         </div>
                       ),
@@ -503,7 +503,7 @@ export default function ProjectsList() {
                       <tr key={p.id} style={{ '--row-accent': GRID_STATUS_COLORS[p.status] || '#334155' }}>
                         {shownColumns.map((c) => <td key={c.key} className={c.numeric ? 'num' : ''}>{cells[c.key]}</td>)}
                         <td className="num">
-                          <Link to={`/projetos/${p.id}`} className="dg-chevron" aria-label={`Abrir ${p.name}`} title="Abrir projeto">
+                          <Link to={`/acoes?projectId=${p.id}`} className="dg-chevron" aria-label={`Abrir ações de ${p.name}`} title="Abrir ações do projeto">
                             <Chevron />
                           </Link>
                         </td>

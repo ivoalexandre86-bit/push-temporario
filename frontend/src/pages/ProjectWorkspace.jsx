@@ -7,6 +7,7 @@ import { useToast } from '../context/ToastContext';
 import { Loading, ErrorState } from '../components/Loading';
 import ActionFormModal from '../components/ActionFormModal';
 import ProjectFormModal from '../components/ProjectFormModal';
+import ProjectListsModal from '../components/ProjectListsModal';
 import HoursExplainer from '../components/HoursExplainer';
 import { auditActionLabel, auditFieldLabel } from '../utils/auditLabels';
 import StatusChip from '../components/StatusChip';
@@ -25,6 +26,7 @@ export default function ProjectWorkspace() {
   const [loading, setLoading] = useState(true);
   const [showNew, setShowNew] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
+  const [showLists, setShowLists] = useState(false);
 
   const reload = () => {
     setLoading(true);
@@ -96,6 +98,11 @@ export default function ProjectWorkspace() {
           {canManageProject && (
             <button onClick={() => setShowEdit(true)} className="px-3 py-1.5 rounded-md border border-gray-300 text-sm text-gray-700 hover:bg-gray-50">
               Editar projeto
+            </button>
+          )}
+          {hasPermission(PERMISSIONS.AREAS_MANAGE) && (
+            <button onClick={() => setShowLists(true)} className="px-3 py-1.5 rounded-md border border-gray-300 text-sm text-gray-700 hover:bg-gray-50">
+              Listas do projeto
             </button>
           )}
           {hasPermission(PERMISSIONS.ACTIONS_CREATE) && (
@@ -202,6 +209,8 @@ export default function ProjectWorkspace() {
         onClose={() => setShowEdit(false)}
         onSaved={reload}
       />
+
+      <ProjectListsModal open={showLists} projectId={id} onClose={() => setShowLists(false)} />
 
       <ActionFormModal
         open={showNew}

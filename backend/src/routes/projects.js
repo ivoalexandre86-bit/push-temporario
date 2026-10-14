@@ -108,6 +108,85 @@ router.get('/manager-options', requirePermission(PERMISSIONS.PROJECTS_MANAGE), a
   } catch (err) { next(err); }
 });
 
+// Listas por projeto: which responsáveis and áreas/processos the action forms
+// of each project offer. An empty selection means "all active items".
+const placeholders = (ids) => ids.map(() => '?').join(',');
+
+async function loadProjectLists(projectIds) {
+  const byProject = new Map();
+  const entry = (id) => {
+    if (!byProject.has(id)) byProject.set(id, { projectId: id, personIds: [], areaIds: [] });
+    return byProject.get(id);
+  };
+  const scope = projectIds ? `WHERE project_id IN (${placeholders(projectIds)})` : '';
+  const args = projectIds || [];
+  for (const r of await db.all(`SELECT project_id, person_id FROM project_people ${scope} ORDER BY person_id`, ...args)) entry(r.project_id).personIds.push(r.person_id);
+  for (const r of await db.all(`SELECT project_id, area_id FROM project_areas ${scope} ORDER BY area_id`, ...args)) entry(r.project_id).areaIds.push(r.area_id);
+  return byProject;
+}
+
+router.get('/lists', async (req, res, next) => {
+  try {
+    const scoped = await allowedProjectIds(req.user);
+    if (scoped !== null && scoped.length === 0) return res.json({ items: [] });
+    res.json({ items: [...(await loadProjectLists(scoped)).values()] });
+  } catch (err) { next(err); }
+});
+
+router.get('/:id/lists', async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    if (!(await canAccessProject(req.user, id))) throw new AppError(403, 'FORBIDDEN', 'Você não tem acesso a este projeto.');
+    res.json((await loadProjectLists([id])).get(id) || { projectId: id, personIds: [], areaIds: [] });
+  } catch (err) { next(err); }
+});
+
+const listsSchema = z.object({
+  personIds: z.array(z.number().int().positive()),
+  areaIds: z.array(z.number().int().positive()),
+});
+
+const namesOf = async (table, ids) => (ids.length
+  ? (await db.all(`SELECT name FROM ${table} WHERE id IN (${placeholders(ids)}) ORDER BY name`, ...ids)).map((r) => r.name).join(', ')
+  : 'Todos');
+
+// Edited by the same roles that edit the lists themselves (admins and project managers).
+router.put('/:id/lists', requirePermission(PERMISSIONS.AREAS_MANAGE), async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const project = await db.get('SELECT id FROM projects WHERE id = ?', id);
+    if (!project) throw new AppError(404, 'NOT_FOUND', 'Projeto não encontrado.');
+    if (!(await canAccessProject(req.user, id))) throw new AppError(403, 'FORBIDDEN', 'Você não tem acesso a este projeto.');
+    const body = listsSchema.parse(req.body);
+    const personIds = [...new Set(body.personIds)].sort((a, b) => a - b);
+    const areaIds = [...new Set(body.areaIds)].sort((a, b) => a - b);
+    const count = async (table, ids) => (ids.length
+      ? Number((await db.get(`SELECT COUNT(*) AS n FROM ${table} WHERE id IN (${placeholders(ids)})`, ...ids)).n)
+      : 0);
+    if (await count('people', personIds) !== personIds.length) throw new AppError(400, 'VALIDATION_ERROR', 'Responsável não encontrado.');
+    if (await count('areas', areaIds) !== areaIds.length) throw new AppError(400, 'VALIDATION_ERROR', 'Área/processo não encontrado.');
+
+    const before = (await loadProjectLists([id])).get(id) || { personIds: [], areaIds: [] };
+    await db.transaction(async (tx) => {
+      await tx.run('DELETE FROM project_people WHERE project_id = ?', id);
+      await tx.run('DELETE FROM project_areas WHERE project_id = ?', id);
+      for (const personId of personIds) await tx.run('INSERT INTO project_people (project_id, person_id) VALUES (?, ?)', id, personId);
+      for (const areaId of areaIds) await tx.run('INSERT INTO project_areas (project_id, area_id) VALUES (?, ?)', id, areaId);
+    });
+    const changes = [
+      ['projectPeople', 'people', before.personIds, personIds],
+      ['projectAreas', 'areas', before.areaIds, areaIds],
+    ].filter(([, , oldIds, newIds]) => oldIds.join() !== newIds.join());
+    for (const [fieldName, table, oldIds, newIds] of changes) {
+      await auditService.record({
+        entityType: 'PROJECT', entityId: id, projectId: id, actionType: 'UPDATE', fieldName,
+        oldValue: await namesOf(table, oldIds), newValue: await namesOf(table, newIds), actor: req.user, req,
+      });
+    }
+    res.json({ projectId: id, personIds, areaIds });
+  } catch (err) { next(err); }
+});
+
 router.get('/:id', async (req, res, next) => {
   try {
     const id = Number(req.params.id);

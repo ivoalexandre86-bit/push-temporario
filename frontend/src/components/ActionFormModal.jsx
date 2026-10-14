@@ -6,9 +6,11 @@ import { useToast } from '../context/ToastContext';
 import { isValidRefMonth, validateActionDates } from '../utils/dateValidation';
 import { newActionDateDefaults } from '../utils/dateDefaults';
 import { AreaSelect, ResponsibleSelect } from './CatalogSelect';
+import { useProjectLists, isOffered } from '../hooks/useProjectLists';
 
 export default function ActionFormModal({ open, onClose, onCreated, defaultProjectId }) {
   const { projects, areas, people } = useCatalogs();
+  const { listsFor } = useProjectLists(open);
   const toast = useToast();
   const [form, setForm] = useState(() => emptyForm(defaultProjectId));
   const [saving, setSaving] = useState(false);
@@ -32,6 +34,17 @@ export default function ActionFormModal({ open, onClose, onCreated, defaultProje
   const projectLocked = Boolean(defaultProjectId);
 
   const set = (patch) => setForm((f) => ({ ...f, ...patch }));
+  const lists = listsFor(form.projectId);
+  // Switching project drops an área/responsável that the new project doesn't offer.
+  const setProject = (projectId) => {
+    const next = listsFor(projectId);
+    const person = people.find((p) => p.name === form.responsibleName);
+    set({
+      projectId,
+      areaId: isOffered(next.areaIds, form.areaId) ? form.areaId : '',
+      responsibleName: !person || isOffered(next.personIds, person.id) ? form.responsibleName : '',
+    });
+  };
   const setDate = (key, e) => {
     const { value, validity } = e.target;
     set({ [key]: value });
@@ -113,14 +126,14 @@ export default function ActionFormModal({ open, onClose, onCreated, defaultProje
           {error && <p role="alert" className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md px-3 py-2">{error}</p>}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Projeto *">
-              <select required value={form.projectId} disabled={projectLocked} onChange={(e) => set({ projectId: e.target.value })} className="input disabled:bg-gray-100">
+              <select required value={form.projectId} disabled={projectLocked} onChange={(e) => setProject(e.target.value)} className="input disabled:bg-gray-100">
                 <option value="">Selecione...</option>
                 {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
               {projectLocked && <p className="text-xs text-gray-400 mt-1">Vinculado automaticamente ao projeto atual.</p>}
             </Field>
             <Field label="Área/Processo *">
-              <AreaSelect required areas={areas} value={form.areaId} onChange={(areaId) => set({ areaId })} />
+              <AreaSelect required areas={areas} allowedIds={lists.areaIds} value={form.areaId} onChange={(areaId) => set({ areaId })} />
             </Field>
             <Field label="Mês de referência *">
               <input type="month" required value={form.refMonth} onChange={(e) => set({ refMonth: e.target.value })} className="input" />
@@ -138,7 +151,7 @@ export default function ActionFormModal({ open, onClose, onCreated, defaultProje
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Responsável">
-              <ResponsibleSelect people={people} value={form.responsibleName} disabled={form.unassigned} onChange={(responsibleName) => set({ responsibleName })} className="input disabled:bg-gray-100" />
+              <ResponsibleSelect people={people} allowedIds={lists.personIds} value={form.responsibleName} disabled={form.unassigned} onChange={(responsibleName) => set({ responsibleName })} className="input disabled:bg-gray-100" />
             </Field>
             <label className="flex items-center gap-2 text-sm text-gray-700 mt-6">
               <input type="checkbox" checked={form.unassigned} onChange={(e) => set({ unassigned: e.target.checked, responsibleName: '' })} className="rounded border-gray-300 text-blue-600" />

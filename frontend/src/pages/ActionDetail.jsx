@@ -13,6 +13,7 @@ import { STATUSES, STATUS_META, FLAG_LABELS, IMPORT_EXCEPTION_LABELS, PERMISSION
 import { validateActionDates } from '../utils/dateValidation';
 import AuditValue from '../components/AuditValue';
 import { AreaSelect, ResponsibleSelect } from '../components/CatalogSelect';
+import { useProjectLists } from '../hooks/useProjectLists';
 import { auditActionLabel, auditFieldLabel } from '../utils/auditLabels';
 
 
@@ -22,6 +23,7 @@ export default function ActionDetail() {
   const { user, hasPermission } = useAuth();
   const toast = useToast();
   const { projects, areas, people } = useCatalogs();
+  const { listsFor } = useProjectLists();
 
   const [action, setAction] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -281,13 +283,13 @@ export default function ActionDetail() {
               </FieldView>
               <FieldView label="Área/Processo" editable={canEdit}>
                 {canEdit ? (
-                  <AreaSelect placeholder={false} areas={areas} value={editForm.areaId} onChange={(areaId) => setEditForm((f) => ({ ...f, areaId }))} />
+                  <AreaSelect placeholder={false} areas={areas} allowedIds={listsFor(editForm.projectId).areaIds} value={editForm.areaId} onChange={(areaId) => setEditForm((f) => ({ ...f, areaId }))} />
                 ) : <p>{action.area.name}</p>}
               </FieldView>
               <FieldView label="Mês de referência"><p>{formatDate(action.refMonth)}</p></FieldView>
               <FieldView label="Responsável" editable={canEdit}>
                 {canEdit ? (
-                  <ResponsibleSelect people={people} value={editForm.responsibleName} onChange={(responsibleName) => setEditForm((f) => ({ ...f, responsibleName }))} />
+                  <ResponsibleSelect people={people} allowedIds={listsFor(editForm.projectId).personIds} value={editForm.responsibleName} onChange={(responsibleName) => setEditForm((f) => ({ ...f, responsibleName }))} />
                 ) : <p>{action.responsibleName || '—'}</p>}
               </FieldView>
             </div>

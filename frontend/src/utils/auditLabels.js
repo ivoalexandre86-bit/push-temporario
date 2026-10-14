@@ -61,6 +61,8 @@ export const AUDIT_FIELD_LABELS = {
   role: 'Papel',
   projectScope: 'Projetos com acesso',
   areaScope: 'Áreas com acesso',
+  projectPeople: 'Responsáveis do projeto',
+  projectAreas: 'Áreas/processos do projeto',
   // time entries
   hours: 'Horas',
   type: 'Tipo',
