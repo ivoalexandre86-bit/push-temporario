@@ -14,6 +14,7 @@ const NAV_ITEMS = [
   { to: '/listas', label: 'Listas', icon: '📝', permission: PERMISSIONS.AREAS_MANAGE },
   { to: '/auditoria', label: 'Auditoria', icon: '🛡️', permission: PERMISSIONS.AUDIT_VIEW },
   { to: '/admin/usuarios', label: 'Usuários', icon: '👤', permission: PERMISSIONS.USERS_MANAGE },
+  { to: '/configuracoes', label: 'Configurações', icon: '⚙️' },
 ];
 
 export default function Layout() {

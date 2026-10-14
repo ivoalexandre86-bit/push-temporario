@@ -13,6 +13,16 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Gestão Projetos" />
     <meta name="application-name" content="Gestão Projetos" />
+    <script>
+      // Apply the saved light/dark choice before the app loads, so the page does not flash.
+      try {
+        var t = localStorage.getItem('tema');
+        if (t === 'escuro' || (t !== 'claro' && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+          document.documentElement.classList.add('dark');
+          document.documentElement.style.colorScheme = 'dark';
+        }
+      } catch (e) {}
+    </script>
     <title>Sistema de Gestão de Projetos</title>
   </head>
   <body>

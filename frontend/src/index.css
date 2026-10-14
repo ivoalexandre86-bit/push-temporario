@@ -179,3 +179,81 @@ a { color: inherit; }
 .dg td:last-child { background: inherit; box-shadow: -8px 0 8px -8px rgba(0, 0, 0, 0.6); }
 .dg th:last-child { z-index: 2; }
 .dg-menu { z-index: 40; }
+
+/* ---------------------------------------------------------------------------
+   Dark mode (Configurações > Aparência). The <html> element gets the "dark"
+   class; the gray scale is flipped and light tints become dark ones, so the
+   existing Tailwind classes work in both modes without a dark: copy of each.
+   --------------------------------------------------------------------------- */
+html.dark {
+  color-scheme: dark;
+  --color-bg: #0b1120;
+  --color-surface: #131c2b;
+  --color-border: #253044;
+  --color-text: #e5e7eb;
+  --color-text-muted: #9aa5b5;
+  --color-primary: #3b82f6;
+
+  --color-gray-50: #1a2333;
+  --color-gray-100: #1f2937;
+  --color-gray-200: #2b3546;
+  --color-gray-300: #3a4558;
+  --color-gray-400: #8390a3;
+  --color-gray-500: #9aa5b5;
+  --color-gray-600: #b4bdc9;
+  --color-gray-700: #cfd5de;
+  --color-gray-800: #e2e6ec;
+  --color-gray-900: #f1f3f6;
+
+  --status-andamento-bg: rgba(59, 130, 246, 0.18);
+  --status-andamento-fg: #93c5fd;
+  --status-concluido-bg: rgba(34, 197, 94, 0.16);
+  --status-concluido-fg: #86efac;
+  --status-emestudo-bg: rgba(245, 158, 11, 0.16);
+  --status-emestudo-fg: #fcd34d;
+  --status-cancelado-bg: rgba(239, 68, 68, 0.16);
+  --status-cancelado-fg: #fca5a5;
+}
+html.dark .bg-white { background-color: var(--color-surface); }
+html.dark .input { background: #0f1726; border-color: var(--color-gray-300); }
+html.dark .input:disabled { background: #1a2333; color: #6b7686; }
+html.dark .scrollbar-thin::-webkit-scrollbar-thumb { background: #3a4558; }
+
+html.dark .bg-blue-50,
+html.dark .bg-blue-100,
+html.dark .bg-blue-50\/60,
+html.dark .bg-blue-50\/30 { background-color: rgba(59, 130, 246, 0.15); }
+html.dark .bg-red-50 { background-color: rgba(239, 68, 68, 0.12); }
+html.dark .bg-green-50 { background-color: rgba(34, 197, 94, 0.12); }
+html.dark .bg-amber-50,
+html.dark .bg-amber-50\/40 { background-color: rgba(245, 158, 11, 0.12); }
+html.dark .bg-purple-50 { background-color: rgba(168, 85, 247, 0.14); }
+
+html.dark .text-blue-600 { color: #60a5fa; }
+html.dark .text-blue-700,
+html.dark .text-blue-800 { color: #93c5fd; }
+html.dark .text-red-500,
+html.dark .text-red-600 { color: #f87171; }
+html.dark .text-red-700,
+html.dark .text-red-800 { color: #fca5a5; }
+html.dark .text-green-700,
+html.dark .text-green-800 { color: #86efac; }
+html.dark .text-amber-700 { color: #fcd34d; }
+html.dark .text-purple-700 { color: #d8b4fe; }
+
+html.dark .border-blue-100,
+html.dark .border-blue-300 { border-color: rgba(59, 130, 246, 0.4); }
+html.dark .border-red-200,
+html.dark .border-red-300 { border-color: rgba(239, 68, 68, 0.4); }
+html.dark .border-green-200 { border-color: rgba(34, 197, 94, 0.4); }
+html.dark .border-amber-200 { border-color: rgba(245, 158, 11, 0.4); }
+html.dark .border-purple-300 { border-color: rgba(168, 85, 247, 0.45); }
+html.dark .ring-blue-200 { --tw-ring-color: rgba(59, 130, 246, 0.4); }
+
+/* Charts (Recharts): grid lines, axis labels and tooltip */
+html.dark .recharts-cartesian-grid line { stroke: #253044; }
+html.dark .recharts-pie-sector path { stroke: var(--color-surface); }
+html.dark .recharts-cartesian-axis-tick-value,
+html.dark .recharts-legend-item-text { fill: #9aa5b5; }
+html.dark .recharts-default-tooltip { background: #131c2b !important; border-color: #253044 !important; }
+html.dark .recharts-tooltip-label { color: #e5e7eb; }
