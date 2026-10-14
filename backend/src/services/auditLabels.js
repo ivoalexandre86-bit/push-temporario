@@ -39,7 +39,7 @@ const FIELD_LABELS = {
   start_date: 'Data de início', due_date: 'Prazo', completion_date: 'Data de conclusão', status: 'Status',
   observations: 'Observações', cancellation_reason: 'Motivo do cancelamento', legacy_hours_confirmed: 'Horas legadas confirmadas',
   name: 'Nome', active: 'Ativo', priority: 'Prioridade', notes: 'Observação', manager_user_id: 'Gerente do projeto',
-  role: 'Papel', projectScope: 'Projetos com acesso', areaScope: 'Áreas com acesso', approval_status: 'Situação da aprovação',
+  role: 'Papel', projectScope: 'Projetos com acesso', areaScope: 'Áreas com acesso', projectPeople: 'Responsáveis do projeto', projectAreas: 'Áreas/processos do projeto', approval_status: 'Situação da aprovação',
 };
 
 const entityLabel = (code) => ENTITY_LABELS[code] || code || '';
