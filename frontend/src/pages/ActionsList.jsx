@@ -7,6 +7,7 @@ import { FilterToggleButton, useFiltersCollapsed } from '../components/FilterPan
 import StatusChip from '../components/StatusChip';
 import ColumnChooser, { usePersistentColumns, SortHeader, Chevron } from '../components/ColumnChooser';
 import ActionFormModal from '../components/ActionFormModal';
+import ProjectListsModal from '../components/ProjectListsModal';
 import QuickActionForm, { QuickActionRow } from '../components/QuickActionForm';
 import KpiCard from '../components/KpiCard';
 import { Loading, ErrorState, EmptyState } from '../components/Loading';
@@ -55,6 +56,7 @@ export default function ActionsList() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showNew, setShowNew] = useState(false);
+  const [showLists, setShowLists] = useState(false);
   // uuid of the action whose inline "nova ação" form is open (one at a time).
   const [quickFrom, setQuickFrom] = useState(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -63,8 +65,8 @@ export default function ActionsList() {
   const [visibleCols, setVisibleCols] = usePersistentColumns('acoes.grid.columns', COLUMNS, LOCKED_COLUMNS);
   const navigate = useNavigate();
   const defaultProjectId = filters.projectId?.length === 1 ? filters.projectId[0] : undefined;
-  // When this screen was reached filtered down to a single project (e.g. from
-  // "Ver todas as ações" inside a project's workspace), offer a quick way back.
+  // When this screen shows a single project (opening a project lands here),
+  // offer its painel and its Listas.
   const cameFromProject = new URLSearchParams(asQueryString).get('projectId');
   const backToProjectId = cameFromProject && !cameFromProject.includes(',') ? cameFromProject : defaultProjectId;
 
@@ -109,7 +111,7 @@ export default function ActionsList() {
         <div className="flex items-center gap-2">
           {backToProjectId && (
             <button onClick={() => navigate(`/projetos/${backToProjectId}`)} className="px-3 py-1.5 rounded-md border border-gray-300 text-sm text-gray-700 hover:bg-gray-50">
-              ← Voltar ao projeto
+              ← Painel do projeto
             </button>
           )}
           <h1 className="text-xl font-bold text-gray-900">Ações</h1>
@@ -118,6 +120,11 @@ export default function ActionsList() {
           <FilterToggleButton collapsed={filtersCollapsed} onToggle={toggleFilters} activeCount={activeCount} />
           <button onClick={() => handleExport('csv')} className="px-3 py-1.5 rounded-md border border-gray-300 text-sm text-gray-700 hover:bg-gray-50">CSV</button>
           <button onClick={() => handleExport('xlsx')} className="px-3 py-1.5 rounded-md border border-gray-300 text-sm text-gray-700 hover:bg-gray-50">XLSX</button>
+          {backToProjectId && hasPermission(PERMISSIONS.AREAS_MANAGE) && (
+            <button onClick={() => setShowLists(true)} className="px-3 py-1.5 rounded-md border border-gray-300 text-sm text-gray-700 hover:bg-gray-50">
+              Listas do projeto
+            </button>
+          )}
           {canCreate && (
             <button onClick={() => setShowNew(true)} className="px-3 py-1.5 rounded-md bg-blue-600 text-white text-sm font-medium hover:bg-blue-700">
               + Nova ação
@@ -264,6 +271,7 @@ export default function ActionsList() {
         </>
       )}
 
+      {backToProjectId && <ProjectListsModal open={showLists} projectId={backToProjectId} onClose={() => setShowLists(false)} />}
       <ActionFormModal open={showNew} onClose={() => setShowNew(false)} onCreated={() => { setPage(1); setReloadKey((k) => k + 1); }} defaultProjectId={defaultProjectId} />
     </div>
   );
