@@ -342,13 +342,13 @@ export default function ProjectsList() {
 
   return (
     <div>
-      {/* Banner: background illustration with the page title, subtitle and motto. */}
+      {/* Banner: background illustration with the page title and subtitle. */}
       <div
-        className="relative overflow-hidden rounded-xl mb-4 text-white bg-[#0a1630] bg-cover bg-right"
+        className="relative overflow-hidden rounded-xl mb-4 text-white bg-[#0a1630] bg-cover bg-[position:right_35%]"
         style={{ backgroundImage: `url(${bannerImg})` }}
       >
         {/* Darkens the photo behind the text so it stays readable at any width. */}
-        <div className="absolute inset-0 bg-[#081024]/70 sm:bg-transparent sm:bg-linear-to-r sm:from-[#081024]/85 sm:via-[#081024]/20 sm:to-[#081024]/45" />
+        <div className="absolute inset-0 bg-[#081024]/70 sm:bg-transparent sm:bg-linear-to-r sm:from-[#081024]/85 sm:via-[#081024]/20 sm:to-transparent" />
         <div className="relative flex flex-wrap items-end justify-between gap-4 px-5 py-6 sm:px-8 sm:py-8 min-h-[150px]">
           <div>
             <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">Projetos</h1>
@@ -368,10 +368,6 @@ export default function ProjectsList() {
               )}
             </div>
           </div>
-          <blockquote className="hidden md:block text-right text-lg font-medium leading-snug text-white/95 drop-shadow">
-            “Planejamento hoje,<br />resultados amanhã.”
-            <span className="block ml-auto mt-2 h-0.5 w-10 rounded bg-blue-400" />
-          </blockquote>
         </div>
       </div>
 
