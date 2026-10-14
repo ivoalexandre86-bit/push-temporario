@@ -348,7 +348,7 @@ export default function ProjectsList() {
         style={{ backgroundImage: `url(${bannerImg})` }}
       >
         {/* Darkens the photo behind the text so it stays readable at any width. */}
-        <div className="absolute inset-0 bg-[#081024]/70 sm:bg-transparent sm:bg-linear-to-r sm:from-[#081024]/85 sm:via-[#081024]/20 sm:to-[#081024]/60" />
+        <div className="absolute inset-0 bg-[#081024]/70 sm:bg-transparent sm:bg-linear-to-r sm:from-[#081024]/85 sm:via-[#081024]/20 sm:to-[#081024]/45" />
         <div className="relative flex flex-wrap items-end justify-between gap-4 px-5 py-6 sm:px-8 sm:py-8 min-h-[150px]">
           <div>
             <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">Projetos</h1>
