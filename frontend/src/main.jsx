@@ -6,6 +6,9 @@ import App from './App.jsx';
 import { AuthProvider } from './context/AuthContext.jsx';
 import { ToastProvider } from './context/ToastContext.jsx';
 import { registerServiceWorker } from './registerServiceWorker.js';
+import { initTheme } from './utils/theme.js';
+
+initTheme();
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
