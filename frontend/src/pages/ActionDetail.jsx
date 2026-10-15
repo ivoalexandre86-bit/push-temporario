@@ -15,6 +15,7 @@ import AuditValue from '../components/AuditValue';
 import { AreaSelect, ResponsibleSelect } from '../components/CatalogSelect';
 import { useProjectLists } from '../hooks/useProjectLists';
 import { auditActionLabel, auditFieldLabel } from '../utils/auditLabels';
+import { attachmentUrl } from '../components/AttachmentsMenu';
 
 
 export default function ActionDetail() {
@@ -488,7 +489,10 @@ export default function ActionDetail() {
               {action.attachments.map((att) => (
                 <li key={att.id} className="flex items-center justify-between text-sm border border-gray-100 rounded-md px-3 py-2">
                   <span className="truncate">{att.original_name}</span>
-                  <a href={`${import.meta.env.VITE_API_URL || '/api'}/actions/${id}/attachments/${att.id}/download`} className="text-blue-600 text-xs hover:underline">Baixar</a>
+                  <span className="flex items-center gap-3 shrink-0">
+                    <a href={attachmentUrl(id, att.id, { inline: true })} target="_blank" rel="noopener noreferrer" className="text-blue-600 text-xs font-medium hover:underline">Abrir</a>
+                    <a href={attachmentUrl(id, att.id)} className="text-blue-600 text-xs hover:underline">Baixar</a>
+                  </span>
                 </li>
               ))}
               {action.attachments.length === 0 && <li className="text-sm text-gray-400">Nenhum anexo.</li>}

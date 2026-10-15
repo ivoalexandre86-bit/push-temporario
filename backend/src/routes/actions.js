@@ -95,7 +95,8 @@ router.get('/', async (req, res, next) => {
     const sortCol = sortBy === 'project_name' ? 'p.name' : sortBy === 'area_name' ? 'ar.name' : `a.${sortBy}`;
     const rows = await db.all(`
       SELECT a.*, p.name AS project_name, ar.name AS area_name, au.name AS assignee_name,
-             ah.planned_hours_total, ah.actual_hours_total
+             ah.planned_hours_total, ah.actual_hours_total,
+             (SELECT COUNT(*) FROM attachments att WHERE att.action_uuid = a.uuid) AS attachment_count
       ${BASE_FROM}
       WHERE ${where}
       ORDER BY ${sortCol} ${sortDir}, a.business_id ASC
@@ -446,8 +447,10 @@ router.post('/:id/comments', requirePermission(PERMISSIONS.COMMENTS_CREATE), asy
 // ------------------------------------------------------------------------
 // Attachments
 // ------------------------------------------------------------------------
+// Files are stored in Postgres (attachments.content): the Render web
+// service's disk is wiped on every deploy/restart. UPLOAD_DIR is only read
+// for older attachments saved there before that change.
 const UPLOAD_DIR = path.join(__dirname, '..', '..', 'data', 'uploads');
-if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
 const ALLOWED_MIME = new Set([
   'application/pdf', 'image/png', 'image/jpeg', 'image/gif',
@@ -456,20 +459,23 @@ const ALLOWED_MIME = new Set([
   'text/csv', 'text/plain',
 ]);
 
+// Types a browser can show by itself, so "Abrir" opens them in a tab.
+const INLINE_MIME = new Set(['application/pdf', 'image/png', 'image/jpeg', 'image/gif', 'text/plain', 'text/csv']);
+
 const upload = multer({
-  storage: multer.diskStorage({
-    destination: (req, file, cb) => cb(null, UPLOAD_DIR),
-    filename: (req, file, cb) => {
-      const ext = path.extname(file.originalname).slice(0, 10);
-      cb(null, `${crypto.randomUUID()}${ext}`);
-    },
-  }),
+  storage: multer.memoryStorage(),
   limits: { fileSize: 15 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     if (!ALLOWED_MIME.has(file.mimetype)) return cb(new AppError(400, 'INVALID_FILE_TYPE', 'Tipo de arquivo não permitido.'));
     cb(null, true);
   },
 });
+
+// multer reads the multipart filename as latin1; browsers send UTF-8.
+function decodeOriginalName(name) {
+  const decoded = Buffer.from(name, 'latin1').toString('utf8');
+  return decoded.includes('\uFFFD') ? name : decoded;
+}
 
 router.post('/:id/attachments', requirePermission(PERMISSIONS.ATTACHMENTS_CREATE), upload.single('file'), async (req, res, next) => {
   try {
@@ -478,16 +484,33 @@ router.post('/:id/attachments', requirePermission(PERMISSIONS.ATTACHMENTS_CREATE
     if (!(await canAccessProject(req.user, action.project_id))) throw new AppError(403, 'FORBIDDEN', 'Sem acesso.');
     if (!req.file) throw new AppError(400, 'VALIDATION_ERROR', 'Nenhum arquivo enviado.');
 
+    const originalName = decodeOriginalName(req.file.originalname);
+    const ext = path.extname(originalName).slice(0, 10);
     const info = await db.run(`
-      INSERT INTO attachments (action_uuid, original_name, stored_name, mime_type, size_bytes, uploaded_by)
-      VALUES (?, ?, ?, ?, ?, ?) RETURNING id
-    `, action.uuid, req.file.originalname, req.file.filename, req.file.mimetype, req.file.size, req.user.id);
+      INSERT INTO attachments (action_uuid, original_name, stored_name, mime_type, size_bytes, uploaded_by, content)
+      VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id
+    `, action.uuid, originalName, `${crypto.randomUUID()}${ext}`, req.file.mimetype, req.file.size, req.user.id, req.file.buffer);
 
-    await auditService.record({ entityType: 'ACTION', entityId: action.uuid, businessId: action.business_id, projectId: action.project_id, actionType: 'ATTACHMENT_ADDED', newValue: req.file.originalname, actor: req.user, req });
-    res.status(201).json({ id: info.lastInsertRowid, name: req.file.originalname });
+    await auditService.record({ entityType: 'ACTION', entityId: action.uuid, businessId: action.business_id, projectId: action.project_id, actionType: 'ATTACHMENT_ADDED', newValue: originalName, actor: req.user, req });
+    res.status(201).json({ id: info.lastInsertRowid, name: originalName });
   } catch (err) { next(err); }
 });
 
+router.get('/:id/attachments', async (req, res, next) => {
+  try {
+    const action = await loadActionOr404(req.params.id);
+    if (!action || action.deleted_at) throw new AppError(404, 'NOT_FOUND', 'Ação não encontrada.');
+    if (!(await canAccessProject(req.user, action.project_id))) throw new AppError(403, 'FORBIDDEN', 'Sem acesso.');
+    const items = await db.all(`
+      SELECT id, original_name, mime_type, size_bytes, created_at FROM attachments
+      WHERE action_uuid = ? ORDER BY created_at DESC
+    `, action.uuid);
+    res.json({ items });
+  } catch (err) { next(err); }
+});
+
+// ?inline=1 opens the file in the browser (PDF, images, text) instead of
+// downloading it.
 router.get('/:id/attachments/:attachmentId/download', async (req, res, next) => {
   try {
     const action = await loadActionOr404(req.params.id);
@@ -495,7 +518,19 @@ router.get('/:id/attachments/:attachmentId/download', async (req, res, next) => 
     if (!(await canAccessProject(req.user, action.project_id))) throw new AppError(403, 'FORBIDDEN', 'Sem acesso.');
     const att = await db.get('SELECT * FROM attachments WHERE id = ? AND action_uuid = ?', Number(req.params.attachmentId), action.uuid);
     if (!att) throw new AppError(404, 'NOT_FOUND', 'Anexo não encontrado.');
-    res.download(path.join(UPLOAD_DIR, att.stored_name), att.original_name);
+
+    const inline = req.query.inline === '1' && INLINE_MIME.has(att.mime_type);
+    if (att.content) {
+      res.attachment(att.original_name);
+      if (inline) res.setHeader('Content-Disposition', res.get('Content-Disposition').replace(/^attachment/, 'inline'));
+      res.type(att.mime_type || 'application/octet-stream');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      return res.send(att.content);
+    }
+    const filePath = path.join(UPLOAD_DIR, att.stored_name);
+    if (!fs.existsSync(filePath)) throw new AppError(404, 'NOT_FOUND', 'O arquivo deste anexo não está mais disponível no servidor. Envie-o novamente.');
+    if (inline) return res.sendFile(filePath, { headers: { 'Content-Type': att.mime_type, 'Content-Disposition': 'inline' } });
+    res.download(filePath, att.original_name);
   } catch (err) { next(err); }
 });
 

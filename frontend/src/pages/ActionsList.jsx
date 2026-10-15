@@ -10,6 +10,7 @@ import ActionFormModal from '../components/ActionFormModal';
 import ProjectListsModal from '../components/ProjectListsModal';
 import QuickActionForm, { QuickActionRow } from '../components/QuickActionForm';
 import KpiCard from '../components/KpiCard';
+import AttachmentsMenu from '../components/AttachmentsMenu';
 import { Loading, ErrorState, EmptyState } from '../components/Loading';
 import { formatDate, formatHours, formatMonthYear } from '../utils/format';
 import { FLAG_LABELS, PERMISSIONS, STATUSES, STATUS_META, GRID_STATUS_COLORS, pillStyle } from '../utils/constants';
@@ -191,6 +192,7 @@ export default function ActionsList() {
                       {visibleCols.includes('status') && <td><ActionStatusPill status={item.status} /></td>}
                       {visibleCols.includes('updatedAt') && <td className="whitespace-nowrap muted tabular-nums">{formatDate(item.updatedAt)}</td>}
                       <td className="num whitespace-nowrap">
+                        <AttachmentsMenu actionId={item.id} count={item.attachmentCount} />
                         {canCreate && (
                           <button
                             type="button"
@@ -242,11 +244,14 @@ export default function ActionsList() {
                   </div>
                 )}
               </button>
-              {canCreate && quickFrom !== item.uuid && (
-                <button onClick={() => setQuickFrom(item.uuid)} className="mt-1 text-xs text-blue-700 font-medium px-2 py-1">
-                  + Nova ação a partir desta
-                </button>
-              )}
+              <div className="flex items-center justify-between">
+                {canCreate && quickFrom !== item.uuid ? (
+                  <button onClick={() => setQuickFrom(item.uuid)} className="mt-1 text-xs text-blue-700 font-medium px-2 py-1">
+                    + Nova ação a partir desta
+                  </button>
+                ) : <span />}
+                <AttachmentsMenu actionId={item.id} count={item.attachmentCount} withLabel className="mt-1 text-xs text-blue-700 font-medium px-2 py-1 inline-flex items-center gap-1" />
+              </div>
               {quickFrom === item.uuid && (
                 <div className="mt-2 border border-[var(--color-border)] rounded-xl">
                   <QuickActionForm source={item} onCreated={handleQuickCreated} onCancel={() => setQuickFrom(null)} />
