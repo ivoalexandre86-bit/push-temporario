@@ -61,6 +61,7 @@ function shapeAction(row) {
     cancellationReason: row.cancellation_reason,
     importExceptions: parseExceptions(row.import_exceptions),
     source: row.source,
+    attachmentCount: row.attachment_count ?? 0,
     flags,
     overdue,
     dueSoon,

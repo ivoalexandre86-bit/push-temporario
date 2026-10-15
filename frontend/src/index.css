@@ -132,6 +132,10 @@ a { color: inherit; }
 .dg .dg-add { font-size: 1.15rem; font-weight: 600; color: #60a5fa; margin-right: 0.25rem; }
 .dg tbody tr.dg-quick, .dg tbody tr.dg-quick:hover { background: var(--dg-head); }
 .dg tbody tr.dg-quick td:first-child { box-shadow: inset 3px 0 0 #3b82f6; }
+.dg tbody tr.dg-quick { color-scheme: dark; }
+.dg tbody tr.dg-quick td { vertical-align: top; }
+.dg tr.dg-quick .dg-input { border-color: #334155; }
+.dg .dg-attach { width: auto; padding: 0 0.4rem; gap: 0.2rem; color: #93c5fd; margin-right: 0.25rem; }
 .dg .dg-input {
   background: transparent;
   color: var(--dg-text);
