@@ -47,6 +47,21 @@ describe('Audit trail', () => {
     expect(res.status).toBe(403);
   });
 
+  it('edits the reference month of an existing action and records it in the audit trail', async () => {
+    const action = await createAction(db, { projectId: proj, areaId: area, status: 'ANDAMENTO' });
+    const before = await db.get('SELECT ref_month FROM actions WHERE uuid = ?', action.uuid);
+    const res = await withAuth(request(app).patch(`/api/actions/${action.businessId}`), adminCookie).send({ refMonth: '2026-11' });
+    expect(res.status).toBe(200);
+    expect(res.body.refMonth).toBe('2026-11-01');
+
+    const auditRow = await db.get(`
+      SELECT * FROM audit_log WHERE entity_type = 'ACTION' AND entity_id = ? AND field_name = 'ref_month' ORDER BY id DESC LIMIT 1
+    `, action.uuid);
+    expect(auditRow).toBeTruthy();
+    expect(auditRow.old_value).toBe(before.ref_month);
+    expect(auditRow.new_value).toBe('2026-11-01');
+  });
+
   it('records old and new values, actor, and timestamp for a status change', async () => {
     const action = await createAction(db, { projectId: proj, areaId: area, status: 'ANDAMENTO' });
     const res = await withAuth(request(app).patch(`/api/actions/${action.businessId}`), adminCookie).send({ status: 'EM ESTUDO' });

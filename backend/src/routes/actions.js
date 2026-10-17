@@ -375,9 +375,10 @@ router.patch('/:id', async (req, res, next) => {
     await db.run(`UPDATE actions SET ${sets.join(', ')} WHERE uuid = ?`, ...params);
 
     const after = { ...before, ...Object.fromEntries(Object.entries(EDITABLE_FIELD_MAP).filter(([k]) => body[k] !== undefined).map(([k, col]) => [col, body[k]])) };
+    if (body.refMonth) after.ref_month = normalizeRefMonth(body.refMonth);
     await auditService.recordDiff({
       entityType: 'ACTION', entityId: before.uuid, businessId: before.business_id, projectId: before.project_id,
-      before, after, fieldsToTrack: Object.values(EDITABLE_FIELD_MAP), actor: req.user, req,
+      before, after, fieldsToTrack: [...Object.values(EDITABLE_FIELD_MAP), 'ref_month'], actor: req.user, req,
     });
     if (body.statusChangeReason) {
       await auditService.record({ entityType: 'ACTION', entityId: before.uuid, businessId: before.business_id, projectId: before.project_id, actionType: 'STATUS_CHANGE_REASON', newValue: body.statusChangeReason, actor: req.user, req });

@@ -88,17 +88,21 @@ export default function ActionDetail() {
   };
 
   const handleSave = async () => {
-    if (editForm.startDate && editForm.dueDate && editForm.dueDate < editForm.startDate) {
+    // Only check date order when a date is being changed, like the API does,
+    // so actions with old inconsistent dates can still have other fields edited.
+    const datesChanged = ['startDate', 'dueDate', 'completionDate'].some((k) => editForm[k] !== toInputDate(action[k]));
+    if (datesChanged && editForm.startDate && editForm.dueDate && editForm.dueDate < editForm.startDate) {
       toast.error('O prazo não pode ser anterior à data de início.');
       return;
     }
-    if (editForm.startDate && editForm.completionDate && editForm.completionDate < editForm.startDate) {
+    if (datesChanged && editForm.startDate && editForm.completionDate && editForm.completionDate < editForm.startDate) {
       toast.error('A data de conclusão não pode ser anterior à data de início.');
       return;
     }
     const patch = {};
     if (editForm.projectId !== String(action.project.id)) patch.projectId = Number(editForm.projectId);
     if (editForm.areaId !== String(action.area.id)) patch.areaId = Number(editForm.areaId);
+    if (editForm.refMonth && editForm.refMonth !== toInputMonth(action.refMonth)) patch.refMonth = editForm.refMonth;
     if (editForm.description !== action.description) patch.description = editForm.description;
     if (editForm.responsibleName !== (action.responsibleName || '')) patch.responsibleName = editForm.responsibleName || null;
     if (Number(editForm.plannedHours || 0) !== Number(action.plannedHours || 0)) patch.plannedHours = editForm.plannedHours ? Number(editForm.plannedHours) : null;
@@ -287,7 +291,11 @@ export default function ActionDetail() {
                   <AreaSelect placeholder={false} areas={areas} allowedIds={listsFor(editForm.projectId).areaIds} value={editForm.areaId} onChange={(areaId) => setEditForm((f) => ({ ...f, areaId }))} />
                 ) : <p>{action.area.name}</p>}
               </FieldView>
-              <FieldView label="Mês de referência"><p>{formatDate(action.refMonth)}</p></FieldView>
+              <FieldView label="Mês de referência" editable={canEdit}>
+                {canEdit ? (
+                  <input type="month" min="1900-01" max="2100-12" value={editForm.refMonth} onChange={(e) => setEditForm((f) => ({ ...f, refMonth: e.target.value }))} aria-label="Mês de referência" className="input" />
+                ) : <p>{formatRefMonth(action.refMonth)}</p>}
+              </FieldView>
               <FieldView label="Responsável" editable={canEdit}>
                 {canEdit ? (
                   <ResponsibleSelect people={people} allowedIds={listsFor(editForm.projectId).personIds} value={editForm.responsibleName} onChange={(responsibleName) => setEditForm((f) => ({ ...f, responsibleName }))} />
@@ -599,10 +607,23 @@ function FieldView({ label, children }) {
   );
 }
 
+/** Reference month as YYYY-MM for <input type="month"> (stored as YYYY-MM-01). */
+function toInputMonth(value) {
+  const iso = toInputDate(value);
+  return iso ? iso.slice(0, 7) : '';
+}
+
+/** Reference month for display, e.g. 07/2026. */
+function formatRefMonth(value) {
+  const ym = toInputMonth(value);
+  return ym ? `${ym.slice(5, 7)}/${ym.slice(0, 4)}` : '—';
+}
+
 function toEditForm(action) {
   return {
     projectId: String(action.project.id),
     areaId: String(action.area.id),
+    refMonth: toInputMonth(action.refMonth),
     description: action.description,
     responsibleName: action.responsibleName || '',
     plannedHours: action.plannedHours ?? '',
