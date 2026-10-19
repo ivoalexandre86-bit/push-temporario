@@ -47,6 +47,21 @@ export function FilterToggleButton({ collapsed, onToggle, activeCount = 0 }) {
   );
 }
 
+/** "Limpar filtros" button for a page header; only shown while a filter is active. */
+export function ClearFiltersButton({ onClear, activeCount = 0, className = '' }) {
+  if (!onClear || activeCount === 0) return null;
+  return (
+    <button
+      type="button"
+      onClick={onClear}
+      title="Remove todos os filtros aplicados"
+      className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-md border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 ${className}`}
+    >
+      <span aria-hidden="true">✕</span> Limpar filtros
+    </button>
+  );
+}
+
 /**
  * Card that holds a page's filters, with a header that minimizes it to one
  * line. Uncontrolled by default (own remembered state); pass `collapsed` and
@@ -87,7 +102,7 @@ export default function FilterPanel({ activeCount = 0, onClear, children, collap
         <div className="ml-auto flex items-center gap-3">
           {onClear && activeCount > 0 && (
             <button type="button" onClick={onClear} className="text-sm font-medium text-blue-700 hover:underline">
-              Limpar ({activeCount})
+              Limpar filtros ({activeCount})
             </button>
           )}
           <button type="button" onClick={toggle} className="text-sm text-gray-500 hover:text-gray-800">

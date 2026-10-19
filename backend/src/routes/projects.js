@@ -60,7 +60,7 @@ router.get('/', async (req, res, next) => {
         GROUP BY a.project_id
       ) s ON s.project_id = p.id
       ${projectClause}
-      ORDER BY p.name
+      ORDER BY p.priority NULLS LAST, p.name
     `, ...params);
 
     const items = rows.map((r) => ({

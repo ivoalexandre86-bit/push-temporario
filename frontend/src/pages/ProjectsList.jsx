@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { Loading, ErrorState, EmptyState } from '../components/Loading';
 import MultiSelect from '../components/MultiSelect';
-import FilterPanel, { FilterToggleButton, useFiltersCollapsed } from '../components/FilterPanel';
+import FilterPanel, { ClearFiltersButton, FilterToggleButton, useFiltersCollapsed } from '../components/FilterPanel';
 import KpiCard from '../components/KpiCard';
 import ProjectFormModal from '../components/ProjectFormModal';
 import ColumnChooser, { usePersistentColumns, SortHeader, Chevron } from '../components/ColumnChooser';
@@ -60,11 +60,56 @@ function localISODate(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+const FILTERS_STORAGE_PREFIX = 'projetos.lista.filtros.v1';
+const PARAM_KEYS = ['q', 'sort', 'dir', ...LIST_KEYS, ...FLAG_KEYS];
+
+function readSavedParams(userId) {
+  try {
+    const saved = localStorage.getItem(`${FILTERS_STORAGE_PREFIX}.${userId ?? 'anon'}`);
+    return saved ? new URLSearchParams(saved) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeSavedParams(userId, params) {
+  try {
+    const key = `${FILTERS_STORAGE_PREFIX}.${userId ?? 'anon'}`;
+    const str = params.toString();
+    if (str) localStorage.setItem(key, str);
+    else localStorage.removeItem(key);
+  } catch { /* ignore */ }
+}
+
+/**
+ * Filters and sort live in the query string; each user's last choice is also
+ * kept in localStorage, so it is still applied when they come back to the
+ * page (or reload) until they clear it. Default order: priority, 1 first.
+ */
 function useProjectFilters() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const { user } = useAuth();
+  const userId = user?.id;
+
+  // Coming back with no filters in the URL: restore the saved ones.
+  const restored = useRef(false);
+  useEffect(() => {
+    if (restored.current || !userId) return;
+    restored.current = true;
+    if (PARAM_KEYS.some((k) => searchParams.has(k))) return;
+    const saved = readSavedParams(userId);
+    if (saved && saved.toString()) setSearchParams(saved, { replace: true });
+  }, [userId, searchParams, setSearchParams]);
+
+  useEffect(() => {
+    if (!userId || !restored.current) return;
+    const toSave = new URLSearchParams();
+    for (const k of PARAM_KEYS) if (searchParams.get(k)) toSave.set(k, searchParams.get(k));
+    writeSavedParams(userId, toSave);
+  }, [searchParams, userId]);
 
   const filters = useMemo(() => {
-    const f = { q: searchParams.get('q') || '', sort: searchParams.get('sort') || 'name', dir: searchParams.get('dir') === 'desc' ? 'desc' : 'asc' };
+    const f = { q: searchParams.get('q') || '', sort: searchParams.get('sort') || 'priority', dir: searchParams.get('dir') === 'desc' ? 'desc' : 'asc' };
     for (const k of LIST_KEYS) f[k] = (searchParams.get(k) || '').split(',').filter(Boolean);
     for (const k of FLAG_KEYS) f[k] = searchParams.get(k) === '1';
     return f;
@@ -361,6 +406,7 @@ export default function ProjectsList() {
                   <FilterToggleButton collapsed={filtersCollapsed} onToggle={toggleFilters} activeCount={activeCount} />
                 </span>
               )}
+              <ClearFiltersButton onClear={clearAll} activeCount={activeCount} />
               {canEdit && (
                 <button onClick={() => setShowNew(true)} className="px-3 py-1.5 rounded-md bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 shadow">
                   + Novo projeto

@@ -148,7 +148,7 @@ export default function FilterMenu({ filters, setFilters, clearAll, activeCount 
               disabled={activeCount === 0}
               className="text-sm font-medium text-blue-700 hover:underline disabled:text-gray-300 disabled:no-underline"
             >
-              Limpar{activeCount > 0 ? ` (${activeCount})` : ''}
+              Limpar filtros{activeCount > 0 ? ` (${activeCount})` : ''}
             </button>
           </div>
 

@@ -1,9 +1,9 @@
-import { Fragment, useEffect, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, downloadFile } from '../api/client';
 import { useActionFilters } from '../hooks/useActionFilters';
 import FilterBar from '../components/FilterBar';
-import { FilterToggleButton, useFiltersCollapsed } from '../components/FilterPanel';
+import { ClearFiltersButton, FilterToggleButton, useFiltersCollapsed } from '../components/FilterPanel';
 import StatusChip from '../components/StatusChip';
 import ColumnChooser, { usePersistentColumns, SortHeader, Chevron } from '../components/ColumnChooser';
 import ActionFormModal from '../components/ActionFormModal';
@@ -12,9 +12,13 @@ import QuickActionForm, { QuickActionRow } from '../components/QuickActionForm';
 import KpiCard from '../components/KpiCard';
 import AttachmentsMenu from '../components/AttachmentsMenu';
 import { Loading, ErrorState, EmptyState } from '../components/Loading';
-import { formatDate, formatHours, formatMonthYear } from '../utils/format';
-import { FLAG_LABELS, PERMISSIONS, STATUSES, STATUS_META, GRID_STATUS_COLORS, pillStyle } from '../utils/constants';
+import { formatDate } from '../utils/format';
+import { FLAG_LABELS, PERMISSIONS, STATUSES, STATUS_META, GRID_STATUS_COLORS } from '../utils/constants';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
+import { useCatalogs } from '../hooks/useCatalogs';
+import { useProjectLists } from '../hooks/useProjectLists';
+import { ActionRowCells } from '../components/ActionGridCells';
 
 const COLUMNS = [
   { key: 'id', label: 'ID', sortKey: 'business_id', width: 'w-16', locked: true },
@@ -36,18 +40,11 @@ const STATUS_KPI_TONES = { ANDAMENTO: 'blue', 'EM ESTUDO': 'amber', 'CONCLUÍDO'
 
 const LOCKED_COLUMNS = COLUMNS.filter((c) => c.locked).map((c) => c.key);
 
-function ActionStatusPill({ status }) {
-  const color = GRID_STATUS_COLORS[status];
-  return (
-    <span className="dg-pill" style={pillStyle(color)}>
-      <span className="dg-dot" style={{ background: color }} aria-hidden="true" />
-      {STATUS_META[status]?.label || status}
-    </span>
-  );
-}
-
 export default function ActionsList() {
-  const { hasPermission } = useAuth();
+  const { user, hasPermission } = useAuth();
+  const toast = useToast();
+  const catalogs = useCatalogs();
+  const { listsFor } = useProjectLists();
   const { filters, setFilters, clearAll, activeCount, asQueryString } = useActionFilters();
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
@@ -61,6 +58,8 @@ export default function ActionsList() {
   // uuid of the action whose inline "nova ação" form is open (one at a time).
   const [quickFrom, setQuickFrom] = useState(null);
   const [reloadKey, setReloadKey] = useState(0);
+  // Set before a reload that follows an inline edit, so the grid stays on screen.
+  const quietReload = useRef(false);
   const canCreate = hasPermission(PERMISSIONS.ACTIONS_CREATE);
   const [filtersCollapsed, toggleFilters] = useFiltersCollapsed();
   const [visibleCols, setVisibleCols] = usePersistentColumns('acoes.grid.columns', COLUMNS, LOCKED_COLUMNS);
@@ -75,7 +74,8 @@ export default function ActionsList() {
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
+    if (!quietReload.current) setLoading(true);
+    quietReload.current = false;
     const qs = new URLSearchParams(asQueryString);
     qs.set('page', page);
     qs.set('pageSize', pageSize);
@@ -87,6 +87,26 @@ export default function ActionsList() {
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [asQueryString, page, pageSize, sortBy, sortDir, reloadKey]);
+
+  const canEditAny = hasPermission(PERMISSIONS.ACTIONS_EDIT_ANY);
+  const canEditAssigned = hasPermission(PERMISSIONS.ACTIONS_EDIT_ASSIGNED);
+  const canEditRow = (item) => canEditAny || (canEditAssigned && item.assignee?.id === user?.id);
+
+  // Inline edit from the grid: save, show the new values at once, then refresh
+  // quietly so KPIs, flags and the order follow. Resolves to false on error.
+  const saveInline = async (item, patch) => {
+    try {
+      const updated = await api.patch(`/actions/${item.id}`, patch);
+      setData((d) => (d ? { ...d, items: d.items.map((it) => (it.uuid === item.uuid ? { ...it, ...updated } : it)) } : d));
+      toast.success(`Ação #${item.id} atualizada.`);
+      quietReload.current = true;
+      setReloadKey((k) => k + 1);
+      return true;
+    } catch (err) {
+      toast.error(err.message);
+      return false;
+    }
+  };
 
   const handleQuickCreated = () => { setQuickFrom(null); setReloadKey((k) => k + 1); };
 
@@ -119,6 +139,7 @@ export default function ActionsList() {
         </div>
         <div className="flex items-center gap-2">
           <FilterToggleButton collapsed={filtersCollapsed} onToggle={toggleFilters} activeCount={activeCount} />
+          <ClearFiltersButton onClear={clearAll} activeCount={activeCount} />
           <button onClick={() => handleExport('csv')} className="px-3 py-1.5 rounded-md border border-gray-300 text-sm text-gray-700 hover:bg-gray-50">CSV</button>
           <button onClick={() => handleExport('xlsx')} className="px-3 py-1.5 rounded-md border border-gray-300 text-sm text-gray-700 hover:bg-gray-50">XLSX</button>
           {backToProjectId && hasPermission(PERMISSIONS.AREAS_MANAGE) && (
@@ -179,17 +200,14 @@ export default function ActionsList() {
                       onClick={() => navigate(`/acoes/${item.id}`)}
                     >
                       {visibleCols.includes('id') && <td className="font-mono muted">#{item.id}</td>}
-                      {visibleCols.includes('project') && <td className="font-medium">{item.project.name}</td>}
-                      {visibleCols.includes('refMonth') && <td className="whitespace-nowrap">{formatMonthYear(item.refMonth)}</td>}
-                      {visibleCols.includes('area') && <td>{item.area.name}</td>}
-                      {visibleCols.includes('description') && <td className="max-w-xs truncate" title={item.description}>{item.description}</td>}
-                      {visibleCols.includes('responsibleName') && <td>{item.responsibleName || <span className="warn text-xs">Sem responsável</span>}</td>}
-                      {visibleCols.includes('plannedHours') && <td className="num">{formatHours(item.plannedHours)}</td>}
-                      {visibleCols.includes('actualHours') && <td className="num">{formatHours(item.actualHours)}</td>}
-                      {visibleCols.includes('varianceHours') && <td className={`num ${item.varianceHours > 0 ? 'danger' : ''}`}>{formatHours(item.varianceHours)}</td>}
-                      {visibleCols.includes('startDate') && <td className="whitespace-nowrap tabular-nums">{formatDate(item.startDate)}</td>}
-                      {visibleCols.includes('dueDate') && <td className={`whitespace-nowrap tabular-nums ${item.overdue ? 'danger' : ''}`}>{formatDate(item.dueDate || item.completionDate)}</td>}
-                      {visibleCols.includes('status') && <td><ActionStatusPill status={item.status} /></td>}
+                      <ActionRowCells
+                        item={item}
+                        show={(key) => visibleCols.includes(key)}
+                        canEdit={canEditRow(item)}
+                        save={(patch) => saveInline(item, patch)}
+                        catalogs={catalogs}
+                        listsFor={listsFor}
+                      />
                       {visibleCols.includes('updatedAt') && <td className="whitespace-nowrap muted tabular-nums">{formatDate(item.updatedAt)}</td>}
                       <td className="num whitespace-nowrap">
                         <AttachmentsMenu actionId={item.id} count={item.attachmentCount} />
