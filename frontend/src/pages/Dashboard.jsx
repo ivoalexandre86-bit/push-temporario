@@ -6,6 +6,7 @@ import {
 } from 'recharts';
 import { api } from '../api/client';
 import { useActionFilters } from '../hooks/useActionFilters';
+import { ClearFiltersButton } from '../components/FilterPanel';
 import FilterMenu from '../components/FilterMenu';
 import KpiCard from '../components/KpiCard';
 import HoursExplainer from '../components/HoursExplainer';
@@ -44,6 +45,7 @@ export default function Dashboard() {
         <h1 className="text-xl font-bold text-gray-900">Painel</h1>
         <div className="flex items-center gap-2">
           <FilterMenu filters={filters} setFilters={setFilters} clearAll={clearAll} activeCount={activeCount} />
+          <ClearFiltersButton onClear={clearAll} activeCount={activeCount} />
           <SavedViewsMenu filters={filters} onApply={(f) => setFilters(f)} />
         </div>
       </div>

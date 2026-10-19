@@ -261,3 +261,11 @@ html.dark .recharts-cartesian-axis-tick-value,
 html.dark .recharts-legend-item-text { fill: #9aa5b5; }
 html.dark .recharts-default-tooltip { background: #131c2b !important; border-color: #253044 !important; }
 html.dark .recharts-tooltip-label { color: #e5e7eb; }
+
+/* Ações grid: cells edited in place */
+.dg td.dg-editable { cursor: text; }
+.dg td.dg-editable:hover { box-shadow: inset 0 0 0 1px #334155; }
+.dg tbody td.dg-editable:first-child:hover { box-shadow: inset 3px 0 0 var(--row-accent, transparent), inset 0 0 0 1px #334155; }
+.dg td.dg-editable:focus-visible { outline: 2px solid #3b82f6; outline-offset: -2px; }
+.dg td.dg-editing { color-scheme: dark; vertical-align: top; padding-top: 0.35rem; padding-bottom: 0.35rem; }
+.dg td.dg-editing .dg-input { border-color: #3b82f6; }

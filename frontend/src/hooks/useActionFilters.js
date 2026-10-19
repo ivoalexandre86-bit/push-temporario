@@ -1,59 +1,89 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
 const ARRAY_KEYS = ['projectId', 'areaId', 'status', 'projectStatus', 'businessId', 'refMonth', 'year', 'responsible'];
-const STORAGE_KEY = 'projetos.filters.v1';
+const SCALAR_KEYS = ['startFrom', 'startTo', 'endFrom', 'endTo', 'q', 'overdue', 'unassigned', 'plannedMin', 'plannedMax', 'actualMin', 'actualMax', 'dueSoonDays'];
+const FILTER_KEYS = [...ARRAY_KEYS, ...SCALAR_KEYS];
+const STORAGE_PREFIX = 'projetos.filters.v2';
 
-function readSessionDefaults() {
+const storageKey = (userId) => `${STORAGE_PREFIX}.${userId ?? 'anon'}`;
+
+function readSaved(userId) {
   try {
-    return JSON.parse(sessionStorage.getItem(STORAGE_KEY) || '{}');
+    return JSON.parse(localStorage.getItem(storageKey(userId)) || '{}');
   } catch {
     return {};
   }
 }
 
+function writeSaved(userId, filters) {
+  try {
+    const compact = {};
+    for (const [key, value] of Object.entries(filters)) {
+      if (Array.isArray(value) ? value.length : value) compact[key] = value;
+    }
+    if (Object.keys(compact).length) localStorage.setItem(storageKey(userId), JSON.stringify(compact));
+    else localStorage.removeItem(storageKey(userId));
+  } catch { /* ignore */ }
+}
+
 /**
- * URL-search-param-backed filter state, so filtered views can be shared via
- * direct link. Falls back to the last filters used this session (sessionStorage)
- * when the URL carries none, and keeps sessionStorage in sync on every change.
+ * Filter state shared by Painel, Ações, Horas and Relatórios. The URL carries
+ * the filters so a filtered view can be shared via direct link; the last
+ * filters each user chose are also kept in localStorage, so they stay applied
+ * across pages, reloads and new visits until the user clears them. Filters in
+ * the URL (e.g. opening a project) override the saved ones key by key.
  */
 export function useActionFilters() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const { user } = useAuth();
+  const userId = user?.id;
+  // Bumped on every change: the URL can stay the same while the saved
+  // filters change (e.g. clearing one that only came from storage).
+  const [version, setVersion] = useState(0);
 
   const filters = useMemo(() => {
     const out = {};
-    const hasAnyUrlParam = [...searchParams.keys()].length > 0;
-    const defaults = hasAnyUrlParam ? {} : readSessionDefaults();
+    const saved = readSaved(userId);
+    const urlHas = (key) => searchParams.has(key);
 
     for (const key of ARRAY_KEYS) {
-      const fromUrl = searchParams.getAll(key);
-      out[key] = fromUrl.length ? fromUrl.flatMap((v) => v.split(',')).filter(Boolean) : (defaults[key] || []);
+      out[key] = urlHas(key)
+        ? searchParams.getAll(key).flatMap((v) => v.split(',')).filter(Boolean)
+        : (Array.isArray(saved[key]) ? saved[key] : []);
     }
-    const scalarKeys = ['startFrom', 'startTo', 'endFrom', 'endTo', 'q', 'overdue', 'unassigned', 'plannedMin', 'plannedMax', 'actualMin', 'actualMax', 'dueSoonDays'];
-    for (const key of scalarKeys) {
-      out[key] = searchParams.get(key) ?? defaults[key] ?? '';
+    for (const key of SCALAR_KEYS) {
+      out[key] = urlHas(key) ? searchParams.get(key) : (saved[key] ?? '');
     }
     return out;
-  }, [searchParams]);
+  }, [searchParams, userId, version]);
+
+  // Keep the saved copy in step with what is applied (including filters that
+  // arrived through a link).
+  useEffect(() => { if (userId) writeSaved(userId, filters); }, [filters, userId]);
 
   const setFilters = useCallback((next) => {
     const merged = { ...filters, ...next };
     const params = new URLSearchParams();
     for (const [key, value] of Object.entries(merged)) {
+      if (!FILTER_KEYS.includes(key)) continue;
       if (Array.isArray(value)) {
         if (value.length) params.set(key, value.join(','));
       } else if (value !== '' && value !== undefined && value !== null && value !== false) {
         params.set(key, value);
       }
     }
+    writeSaved(userId, merged);
+    setVersion((v) => v + 1);
     setSearchParams(params, { replace: true });
-    try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(merged)); } catch { /* ignore */ }
-  }, [filters, setSearchParams]);
+  }, [filters, setSearchParams, userId]);
 
   const clearAll = useCallback(() => {
+    writeSaved(userId, {});
+    setVersion((v) => v + 1);
     setSearchParams({}, { replace: true });
-    try { sessionStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
-  }, [setSearchParams]);
+  }, [setSearchParams, userId]);
 
   const activeCount = useMemo(() => {
     let n = 0;
