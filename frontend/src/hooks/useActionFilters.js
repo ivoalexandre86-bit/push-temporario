@@ -32,8 +32,8 @@ function writeSaved(userId, filters) {
  * Filter state shared by Painel, Ações, Horas and Relatórios. The URL carries
  * the filters so a filtered view can be shared via direct link; the last
  * filters each user chose are also kept in localStorage, so they stay applied
- * across pages, reloads and new visits until the user clears them. Filters in
- * the URL (e.g. opening a project) override the saved ones key by key.
+ * across pages, reloads and new visits until the user clears them. When the
+ * URL carries any filter (e.g. opening a project), it replaces the saved set.
  */
 export function useActionFilters() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -45,7 +45,11 @@ export function useActionFilters() {
 
   const filters = useMemo(() => {
     const out = {};
-    const saved = readSaved(userId);
+    // A link that carries filters (e.g. opening a project) defines the whole
+    // view: saved filters only fill in when the URL has none, otherwise a
+    // leftover filter (responsável, status...) would hide the project's actions.
+    const urlHasFilters = FILTER_KEYS.some((key) => searchParams.has(key));
+    const saved = urlHasFilters ? {} : readSaved(userId);
     const urlHas = (key) => searchParams.has(key);
 
     for (const key of ARRAY_KEYS) {
