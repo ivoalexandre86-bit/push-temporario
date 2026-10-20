@@ -43,8 +43,7 @@ projeto-app/
 - **Dois ambientes, dois bancos separados**: o site publicado (Render) é o
   ambiente de **produção**, com seu próprio Postgres gerenciado. O atalho
   local `Iniciar Sistema.bat` roda o ambiente de **teste/melhoria**, com um
-  Postgres **local** neste computador (uma cópia dos dados reais, mas
-  independente) — ver [Ambientes: teste local vs
+  banco **embutido** neste computador (sem instalar PostgreSQL) — ver [Ambientes: teste local vs
   produção](#ambientes-teste-local-vs-produção).
 - Autenticação por sessão via cookie `httpOnly` + JWT (expiração de 30 min,
   configurável), com fallback Bearer token para clientes de API.
@@ -70,63 +69,35 @@ projeto-app/
 
 ## Como rodar localmente
 
-Pré-requisitos: Node.js 20+, npm, e acesso a um banco PostgreSQL. Para rodar
-o **ambiente de teste/melhoria** pronto para uso, com uma cópia dos dados
-reais, veja [Ambientes: teste local vs produção](#ambientes-teste-local-vs-produção)
-— esta seção é para quem quer rodar o backend/frontend manualmente (sem o
-atalho `Iniciar Sistema.bat`), apontando para qualquer Postgres à sua escolha.
+Pré-requisito único: **Node.js 20+**. Não precisa instalar PostgreSQL nem
+criar `.env`.
 
-### 1. Backend (API + banco de dados)
+- **Windows:** dê dois cliques em `Iniciar Sistema.bat`.
+- **Qualquer sistema:** `npm start` na raiz do projeto.
 
-```bash
-cd backend
-cp .env.example .env
-# Edite .env e cole a DATABASE_URL do Postgres (ver "Deploy em produção")
-npm install
-npm run setup      # roda migrations + seed de usuários/papéis + importação da planilha
-npm run dev         # inicia a API em http://localhost:4000
-```
+O comando instala as dependências (só na primeira vez ou quando o
+`package-lock.json` muda), recompila a interface quando algum arquivo dela
+muda, sobe o sistema em `http://localhost:4000` e abre o navegador. Para
+encerrar, feche a janela (ou Ctrl+C).
 
-`npm run setup` executa, em sequência:
-- `npm run migrate` — aplica as migrations SQL (cria todas as tabelas/índices).
-- `npm run seed` — cria os papéis e permissões; usuários de demonstração são
-  criados apenas fora de produção, salvo ativação explícita.
-- `npm run import:xlsx` — importa `backend/data/seed/PROJETOS.xlsx` (a
-  planilha original) para o banco, preservando IDs e sinalizando exceções de
-  qualidade de dados.
+Sem `DATABASE_URL`, o backend usa um **banco embutido** (PGlite, um Postgres
+que roda dentro do Node, sem instalação), gravado em
+`%LOCALAPPDATA%\SistemaGestaoProjetos\banco-local` (fora do OneDrive, para a
+sincronização não corromper os arquivos). Na primeira vez ele cria as tabelas,
+os usuários de demonstração e importa `backend/data/seed/PROJETOS.xlsx`.
+Para recomeçar do zero, feche o sistema e apague essa pasta. Para usar outra
+pasta, defina `LOCAL_DB_DIR`.
 
-⚠️ Se `DATABASE_URL` apontar para o banco de **produção** (Render), **não
-rode `npm run setup`/`import:xlsx` nesse banco** — ele já tem os dados reais.
-`npm run setup` é para preparar um banco novo/vazio (ex.: um Postgres local
-só para desenvolvimento, separado do banco de produção — ver [Ambientes:
-teste local vs produção](#ambientes-teste-local-vs-produção)). Para
-recomeçar um banco de testes do zero:
-`CONFIRM_RESET=SIM node scripts/reset-db.js --force && npm run setup`.
+Para apontar para um Postgres de verdade (por exemplo o antigo banco local
+`projetos_test`), coloque `DATABASE_URL` em `backend/.env`. O atalho se recusa
+a iniciar se a `DATABASE_URL` for a do banco de produção do Render.
 
-### 2. Frontend (SPA)
-
-Em outro terminal:
+### Desenvolvendo a interface com recarga automática (opcional)
 
 ```bash
-cd frontend
-npm install
-npm run dev          # http://localhost:5173, com proxy de /api para o backend
+npm start                         # terminal 1: API + banco local em :4000
+cd frontend && npm run dev        # terminal 2: http://localhost:5173, com proxy de /api
 ```
-
-Acesse `http://localhost:5173` e entre com uma das [contas de demonstração](#contas-de-demonstração).
-
-### 3. Rodando como um único serviço (opcional)
-
-Para simular o modo "produção em processo único" (o backend serve os arquivos
-estáticos do frontend já compilado):
-
-```bash
-cd frontend && npm run build
-cd ../backend && npm run dev
-```
-
-Acesse `http://localhost:4000` — API e SPA respondem na mesma origem, sem
-necessidade de CORS.
 
 ## Contas de demonstração
 
@@ -306,45 +277,15 @@ mesmo dialeto SQL usado em produção:
 
 ## Ambientes: teste local vs produção
 
-O sistema roda em **dois ambientes independentes**, cada um com seu próprio
-banco de dados PostgreSQL — de propósito, para que melhorias possam ser
-testadas sem nenhum risco para os dados reais em uso pelo time:
-
-| | Ambiente de **teste/melhoria** | Ambiente de **produção** |
+| | Uso **local** (teste/melhoria) | **Produção** |
 |---|---|---|
-| Onde roda | Este computador (`Iniciar Sistema.bat`) | Site publicado no Render |
-| Banco de dados | PostgreSQL **local** (só neste computador) | Postgres gerenciado do Render |
-| Dados | Uma **cópia** dos dados reais (criada uma vez pelo `configurar-ambiente-teste.ps1`); muda de forma independente a partir daí | Os dados reais em uso pelo time |
-| Quem acessa | Só você, neste computador | Qualquer pessoa com o link do site |
-| Como atualizar código | Editar os arquivos e rodar `Iniciar Sistema.bat` de novo | `git push` para o GitHub → Render rebuilda e publica automaticamente |
+| Onde roda | Este computador (`Iniciar Sistema.bat` ou `npm start`) | Site publicado no Render |
+| Banco de dados | Banco embutido em `%LOCALAPPDATA%\SistemaGestaoProjetos\banco-local` | Postgres gerenciado do Render (`projetos-db`) |
+| Dados | Planilha original na primeira vez; muda de forma independente a partir daí | Os dados reais em uso pelo time |
+| Como atualizar código | Editar os arquivos e iniciar de novo | `git push` para o GitHub → Render rebuilda e publica |
 
-### Configurando o ambiente de teste (uma vez)
-
-1. Instale o PostgreSQL neste computador (uma única vez).
-2. Rode `configurar-ambiente-teste.ps1` (nesta mesma pasta) — ele cria o
-   banco local `projetos_test`, gera o `.env` do ambiente de teste e copia
-   os dados reais (`projetos.db`) para esse banco.
-3. A partir daí, use `Iniciar Sistema.bat` normalmente para abrir o sistema
-   de teste em `http://localhost:4000`.
-
-O banco de teste local e o banco de produção **nunca se comunicam** —
-alterações feitas em um não aparecem no outro. Para "resetar" o ambiente de
-teste e trazer uma cópia mais recente dos dados reais, rode
-`configurar-ambiente-teste.ps1` de novo (ele reaproveita o banco `projetos_test`
-já existente; para começar do zero, apague o banco antes com
-`CONFIRM_RESET=SIM node scripts/reset-db.js --force` dentro de
-`%LOCALAPPDATA%\SistemaGestaoProjetos\backend`).
-
-### Fluxo de trabalho recomendado
-
-1. Teste e desenvolva melhorias no ambiente local (`Iniciar Sistema.bat`),
-   à vontade, sem risco.
-2. Quando estiver satisfeito com uma mudança, publique o código no GitHub
-   (`git add`, `git commit`, `git push`) — isso **não** envia os dados do
-   banco local, só o código.
-3. O Render detecta o novo commit e republica o site de produção
-   automaticamente com o código atualizado, mas mantendo o banco de dados
-   de produção como está (os dados reais não são afetados pelo deploy).
+Os dois bancos **nunca se comunicam**: alterações locais não aparecem no
+site, e vice-versa. Publicar código (`git push`) não envia os dados locais.
 
 ## Deploy em produção
 
@@ -372,8 +313,7 @@ usado pelo atalho `Iniciar Sistema.bat` (ver seção anterior).
    conforme seu orçamento.
 4. Depois que o banco for criado, copie a **External Database URL**
    (Dashboard do Render > o recurso Postgres > **Connect**) — você vai
-   precisar dela no passo de migração dos dados abaixo e no `.env` usado
-   por `Iniciar Sistema.bat`.
+   precisar dela no passo de migração dos dados abaixo.
 
 ### Trazendo os dados que já existem localmente (401+ ações reais)
 
@@ -398,9 +338,8 @@ desnecessário.
 
 ### Ambiente local (`Iniciar Sistema.bat`)
 
-O atalho local **não** usa o banco de produção — ver [Ambientes: teste local
-vs produção](#ambientes-teste-local-vs-produção) para configurá-lo com seu
-próprio banco PostgreSQL local.
+O atalho local **não** usa o banco de produção: ver [Como rodar
+localmente](#como-rodar-localmente).
 
 ### Rodando em outro provedor (Railway, Fly.io, VM própria, etc.)
 

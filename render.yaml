@@ -1,9 +1,9 @@
 # Render Blueprint for "Sistema de Gestao de Projetos e Plano de Acao".
 #
 # Creates:
-#  - A managed PostgreSQL database (shared by this web service AND the
-#    local desktop shortcut "Iniciar Sistema.bat" - both must point at the
-#    SAME DATABASE_URL, never two separate databases).
+#  - A managed PostgreSQL database used only by this web service. The local
+#    shortcut "Iniciar Sistema.bat" uses its own embedded database instead
+#    (backend/src/db/localDb.js) and never touches this one.
 #  - A single Node.js web service that builds the React frontend and serves
 #    it from the same Express server as the API (see backend/src/app.js),
 #    so there is only one URL/origin for the whole application.
@@ -21,10 +21,7 @@
 #   1. Push this repository to GitHub (see README.md).
 #   2. In the Render dashboard: New > Blueprint > select this repository.
 #   3. Render reads this file and creates both resources automatically.
-#   4. After the database is created, copy its "External Database URL"
-#      (Dashboard > the Postgres resource > Connect) into the .env file
-#      used by "Iniciar Sistema.bat" on your notebook, so both share the
-#      same data. The web service gets DATABASE_URL automatically below.
+#   4. The web service gets DATABASE_URL automatically below.
 #   5. Run the one-time data migration (see backend/scripts/
 #      migrate-sqlite-to-postgres.js) to bring in the 401+ existing
 #      actions from the old local database.

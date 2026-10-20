@@ -1,0 +1,12 @@
+{
+  "name": "sistema-gestao-projetos",
+  "private": true,
+  "description": "Sistema de Gestão de Projetos e Ações - atalhos da raiz do projeto",
+  "scripts": {
+    "start": "node scripts/iniciar.js",
+    "test": "npm --prefix backend test"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
