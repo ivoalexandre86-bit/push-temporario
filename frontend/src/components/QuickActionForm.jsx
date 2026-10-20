@@ -101,7 +101,7 @@ function StatusFields({ q, inputClass }) {
 }
 
 /** The new action as one more row of the Ações grid, right under its source. */
-export function QuickActionRow({ source, visibleCols, onCreated, onCancel }) {
+export function QuickActionRow({ source, visibleCols, onCreated, onCancel, checkboxColumn = false }) {
   const q = useQuickCreate(source, onCreated);
   const show = (key) => visibleCols.includes(key);
   const onKeyDown = (e) => {
@@ -111,6 +111,7 @@ export function QuickActionRow({ source, visibleCols, onCreated, onCancel }) {
   const cls = 'dg-input w-full';
   return (
     <tr className="dg-quick" onClick={(e) => e.stopPropagation()} onKeyDown={onKeyDown}>
+      {checkboxColumn && <td className="dg-check" />}
       {show('id') && <td className="muted text-xs">nova</td>}
       {show('project') && (
         <td style={{ minWidth: '10rem' }}>

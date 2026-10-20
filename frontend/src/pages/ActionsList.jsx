@@ -11,6 +11,7 @@ import ProjectListsModal from '../components/ProjectListsModal';
 import QuickActionForm, { QuickActionRow } from '../components/QuickActionForm';
 import KpiCard from '../components/KpiCard';
 import AttachmentsMenu from '../components/AttachmentsMenu';
+import BulkActionBar from '../components/BulkActionBar';
 import { Loading, ErrorState, EmptyState } from '../components/Loading';
 import { formatDate } from '../utils/format';
 import { FLAG_LABELS, PERMISSIONS, STATUSES, STATUS_META, GRID_STATUS_COLORS } from '../utils/constants';
@@ -58,6 +59,9 @@ export default function ActionsList() {
   // uuid of the action whose inline "nova ação" form is open (one at a time).
   const [quickFrom, setQuickFrom] = useState(null);
   const [reloadKey, setReloadKey] = useState(0);
+  // Actions checked for a bulk update, by uuid (kept while paging, cleared
+  // when the filters change).
+  const [selected, setSelected] = useState(() => new Map());
   // Set before a reload that follows an inline edit, so the grid stays on screen.
   const quietReload = useRef(false);
   const canCreate = hasPermission(PERMISSIONS.ACTIONS_CREATE);
@@ -70,7 +74,7 @@ export default function ActionsList() {
   const cameFromProject = new URLSearchParams(asQueryString).get('projectId');
   const backToProjectId = cameFromProject && !cameFromProject.includes(',') ? cameFromProject : defaultProjectId;
 
-  useEffect(() => { setPage(1); }, [asQueryString]);
+  useEffect(() => { setPage(1); setSelected(new Map()); }, [asQueryString]);
 
   useEffect(() => {
     let cancelled = false;
@@ -106,6 +110,48 @@ export default function ActionsList() {
       toast.error(err.message);
       return false;
     }
+  };
+
+  // Keep the checked actions' data current (status, responsável...) after a reload.
+  useEffect(() => {
+    if (!data?.items) return;
+    setSelected((m) => {
+      if (!m.size || !data.items.some((it) => m.has(it.uuid))) return m;
+      const next = new Map(m);
+      for (const it of data.items) if (next.has(it.uuid)) next.set(it.uuid, it);
+      return next;
+    });
+  }, [data]);
+
+  const editableItems = (data?.items || []).filter(canEditRow);
+  const canBulk = canEditAny || canEditAssigned;
+  const allPageSelected = editableItems.length > 0 && editableItems.every((it) => selected.has(it.uuid));
+  const somePageSelected = editableItems.some((it) => selected.has(it.uuid));
+
+  const toggleSelected = (item) => setSelected((m) => {
+    const next = new Map(m);
+    if (next.has(item.uuid)) next.delete(item.uuid); else next.set(item.uuid, item);
+    return next;
+  });
+  const togglePage = () => setSelected((m) => {
+    const next = new Map(m);
+    for (const it of editableItems) {
+      if (allPageSelected) next.delete(it.uuid); else next.set(it.uuid, it);
+    }
+    return next;
+  });
+
+  // After a bulk update only the actions that failed stay checked.
+  const handleBulkDone = ({ updated, unchanged, errors }) => {
+    const failed = new Set(errors.map((e) => e.id));
+    setSelected((m) => new Map([...m].filter(([, it]) => failed.has(it.id))));
+    const parts = [];
+    if (updated) parts.push(`${updated} ${updated === 1 ? 'ação atualizada' : 'ações atualizadas'}`);
+    if (unchanged) parts.push(`${unchanged} já ${unchanged === 1 ? 'estava' : 'estavam'} com esse valor`);
+    if (parts.length) toast.success(`${parts.join(', ')}.`);
+    if (errors.length) toast.error(`${errors.length} não ${errors.length === 1 ? 'pôde' : 'puderam'} ser atualizada(s). Veja o motivo na barra.`);
+    quietReload.current = true;
+    setReloadKey((k) => k + 1);
   };
 
   const handleQuickCreated = () => { setQuickFrom(null); setReloadKey((k) => k + 1); };
@@ -165,6 +211,10 @@ export default function ActionsList() {
         <FilterBar filters={filters} setFilters={setFilters} clearAll={clearAll} activeCount={activeCount} collapsed={false} onToggle={toggleFilters} />
       )}
 
+      {canBulk && selected.size > 0 && (
+        <BulkActionBar selected={selected} people={catalogs.people} onClear={() => setSelected(new Map())} onDone={handleBulkDone} />
+      )}
+
       {loading && <Loading />}
       {error && !loading && <ErrorState message={error} />}
       {data && !loading && data.items.length === 0 && (
@@ -179,6 +229,19 @@ export default function ActionsList() {
               <table>
                 <thead>
                   <tr>
+                    {canBulk && (
+                      <th scope="col" className="dg-check">
+                        <input
+                          type="checkbox"
+                          checked={allPageSelected}
+                          ref={(el) => { if (el) el.indeterminate = somePageSelected && !allPageSelected; }}
+                          onChange={togglePage}
+                          disabled={editableItems.length === 0}
+                          aria-label="Selecionar todas as ações desta página"
+                          title="Selecionar todas as ações desta página"
+                        />
+                      </th>
+                    )}
                     {cols.map((c) => (
                       <th key={c.key} scope="col" className={`${c.width || ''} ${c.numeric ? 'num' : ''}`}>
                         {c.sortKey
@@ -195,10 +258,22 @@ export default function ActionsList() {
                   {data.items.map((item) => (
                     <Fragment key={item.uuid}>
                     <tr
-                      className="cursor-pointer"
+                      className={`cursor-pointer ${selected.has(item.uuid) ? 'dg-selected' : ''}`}
                       style={{ '--row-accent': GRID_STATUS_COLORS[item.status] || '#334155' }}
                       onClick={() => navigate(`/acoes/${item.id}`)}
                     >
+                      {canBulk && (
+                        <td className="dg-check" onClick={(e) => e.stopPropagation()}>
+                          {canEditRow(item) && (
+                            <input
+                              type="checkbox"
+                              checked={selected.has(item.uuid)}
+                              onChange={() => toggleSelected(item)}
+                              aria-label={`Selecionar ação #${item.id}`}
+                            />
+                          )}
+                        </td>
+                      )}
                       {visibleCols.includes('id') && <td className="font-mono muted">#{item.id}</td>}
                       <ActionRowCells
                         item={item}
@@ -230,7 +305,7 @@ export default function ActionsList() {
                       </td>
                     </tr>
                     {quickFrom === item.uuid && (
-                      <QuickActionRow source={item} visibleCols={visibleCols} onCreated={handleQuickCreated} onCancel={() => setQuickFrom(null)} />
+                      <QuickActionRow source={item} visibleCols={visibleCols} checkboxColumn={canBulk} onCreated={handleQuickCreated} onCancel={() => setQuickFrom(null)} />
                     )}
                     </Fragment>
                   ))}
@@ -243,7 +318,7 @@ export default function ActionsList() {
           <div className="md:hidden space-y-3">
             {data.items.map((item) => (
               <div key={item.uuid}>
-              <button onClick={() => navigate(`/acoes/${item.id}`)} className="w-full text-left bg-white border border-[var(--color-border)] rounded-xl p-4">
+              <button onClick={() => navigate(`/acoes/${item.id}`)} className={`w-full text-left bg-white border rounded-xl p-4 ${selected.has(item.uuid) ? 'border-blue-500 ring-1 ring-blue-500' : 'border-[var(--color-border)]'}`}>
                 <div className="flex justify-between items-start gap-2 mb-1">
                   <span className="font-mono text-xs text-gray-400">#{item.id}</span>
                   <StatusChip status={item.status} />
@@ -263,6 +338,12 @@ export default function ActionsList() {
                 )}
               </button>
               <div className="flex items-center justify-between">
+                {canBulk && canEditRow(item) && (
+                  <label className="mt-1 text-xs text-gray-600 px-2 py-1 inline-flex items-center gap-1.5">
+                    <input type="checkbox" checked={selected.has(item.uuid)} onChange={() => toggleSelected(item)} aria-label={`Selecionar ação #${item.id}`} />
+                    Selecionar
+                  </label>
+                )}
                 {canCreate && quickFrom !== item.uuid ? (
                   <button onClick={() => setQuickFrom(item.uuid)} className="mt-1 text-xs text-blue-700 font-medium px-2 py-1">
                     + Nova ação a partir desta
