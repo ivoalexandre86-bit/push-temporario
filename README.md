@@ -19,6 +19,7 @@ dados fictícios de negócio.
 5. [Papéis e permissões](#papéis-e-permissões)
 6. [Importação da planilha original](#importação-da-planilha-original)
 7. [Regras de negócio implementadas](#regras-de-negócio-implementadas)
+   - [Cadastros de logística: Regionais e Transportadores](#cadastros-de-logística-regionais-e-transportadores)
 8. [Testes automatizados](#testes-automatizados)
 9. [Ambientes: teste local vs produção](#ambientes-teste-local-vs-produção)
 10. [Deploy em produção](#deploy-em-produção)
@@ -243,6 +244,63 @@ importadas**, 0 rejeitadas, 44 com alguma exceção sinalizada para revisão
   mostram todos os meses do período (filtros Ano/Mês, ou do primeiro ao
   último mês com dados), com zero nos meses sem atividade.
 
+## Cadastros de logística: Regionais e Transportadores
+
+Duas telas no menu lateral, **Regionais** e **Transportadores**, com
+estrutura definida a partir da planilha `Contatos Logística.xlsx` (a
+planilha real tem dados pessoais de contato e **não** é versionada; os
+testes usam uma planilha sintética com os mesmos cabeçalhos).
+
+| Aba da planilha | Cadastro | Tabela |
+|---|---|---|
+| `REGIONAIS` | Regionais + contato por departamento (Regionais, Programador...) | `regions`, `region_contacts` |
+| `Regionais ` (com espaço no fim) | Filiais/unidades de cada regional (gerente, coordenador e assistente) | `branches` |
+| `TRANSPORTADOR` | Transportadora que atende cada unidade (gerente, programador, contato da unidade) | `carriers` |
+
+**Relacionamentos** (cardinalidade observada nos dados): regional 1–N
+filiais; regional 1–N transportadores; filial 1–N transportadores, este
+último **opcional** — na planilha, 12 das 22 linhas de transportador citam
+unidades que não estão na aba de filiais, então a linha guarda a unidade
+como informada e fica "sem filial vinculada" até alguém vincular.
+
+**Chaves de duplicidade** (únicas no banco entre registros não excluídos):
+regional = nome normalizado (sem acento/maiúsculas/espaços extras); contato =
+regional + departamento; filial = CNPJ + código da filial (o mesmo CNPJ
+aparece com códigos diferentes, então só o CNPJ não basta; sem CNPJ, usa
+regional + nome); transportador = unidade + transportadora.
+
+**Campos obrigatórios**: apenas os que identificam o registro — Regional;
+Nome da Filial (filial); Transportadora e nome ou CNPJ da unidade
+(transportador); Departamento (contato). Os demais são opcionais. CNPJ (dígito
+verificador), UF, CEP e e-mail são validados na tela e na API quando
+digitados; na importação, valores fora do padrão **são mantidos e sinalizados**.
+
+**Importação inteligente** (`Importar Excel` nas duas telas; API em
+`/api/logistics/import/*`): seleção do `.xlsx` → identificação das abas e
+do cabeçalho → sugestão do cadastro de destino → mapeamento automático das
+colunas (inclusive cabeçalhos repetidos, como os três "Email" da aba
+TRANSPORTADOR), editável → pré-visualização linha a linha (novo / atualizar /
+sem alteração / já existe / repetida na planilha / rejeitada, com avisos e o
+"de → para" de cada alteração) → escolha entre **só inserir novos** ou
+**inserir e atualizar** → confirmação → resultado e histórico
+(`logistics_import_batches`). Opções: tratar "NA"/"-"/"Não tem" como vazio,
+célula vazia não apaga valor existente, linhas repetidas mescladas ou
+ignoradas, cadastrar regionais inexistentes. Nada é excluído; atualizar exige
+confirmação explícita; se o banco mudar entre a pré-visualização e a
+confirmação, a importação é recusada para nova revisão.
+
+**Permissões** (`logistics.view`, `logistics.manage`, `logistics.import`,
+criadas pela migration `0010` também no banco de produção): todos os papéis
+consultam; Administrador e Gerente de Projeto cadastram, editam, excluem e
+importam; exportar usa a permissão de exportação já existente
+(`reports.export`). Exclusão é lógica e recusada quando há vínculos ativos
+(regional com filiais/transportadores, filial com transportadores). Toda
+criação, alteração, exclusão, importação e exportação vai para `audit_log`.
+
+**Exportação**: Excel (ou CSV pela API) do que está filtrado na tela ou só
+dos selecionados, com os **mesmos cabeçalhos da planilha original** — o
+arquivo exportado pode ser reimportado.
+
 ## Testes automatizados
 
 ```bash
@@ -271,6 +329,10 @@ mesmo dialeto SQL usado em produção:
 - `import.test.js` — importação completa da planilha real (401 linhas),
   idempotência, sinalização de exceções, resumo de importação, preservação
   dos catálogos completos.
+- `logistics.test.js` — cadastros de Regionais/Filiais/Transportadores:
+  análise das abas, mapeamento automático, pré-visualização, duplicidade,
+  inserir x atualizar com confirmação, integridade referencial,
+  permissões e exportação reimportável.
 - `export.test.js` — exportação CSV/XLSX respeitando os filtros aplicados,
   cabeçalhos em português, metadados de filtro, evento de auditoria de
   exportação.

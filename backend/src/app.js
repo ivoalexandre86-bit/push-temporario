@@ -18,6 +18,7 @@ const auditRoutes = require('./routes/audit');
 const peopleRoutes = require('./routes/people');
 const savedViewRoutes = require('./routes/savedViews');
 const meRoutes = require('./routes/me');
+const logisticsRoutes = require('./routes/logistics');
 const adminMigrateDataRoutes = require('./routes/adminMigrateData'); // TEMPORARY - remove after one-time migration
 
 const app = express();
@@ -64,6 +65,7 @@ app.use('/api/reports', reportRoutes);
 app.use('/api/audit', auditRoutes);
 app.use('/api/people', peopleRoutes);
 app.use('/api/saved-views', savedViewRoutes);
+app.use('/api/logistics', logisticsRoutes);
 
 app.use('/api', adminMigrateDataRoutes); // TEMPORARY - remove after one-time migration
 app.use('/api', notFoundHandler);

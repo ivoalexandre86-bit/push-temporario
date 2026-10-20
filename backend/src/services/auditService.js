@@ -19,9 +19,11 @@ function stringifyValue(v) {
  * @param {*} [opts.newValue]
  * @param {object} opts.actor - { id, name } or null for system/anonymous
  * @param {object} [opts.req] - express request, to pull ip/user-agent
+ * @param {object} [opts.tx] - transaction executor (db.transaction callback arg); defaults to the pool
  */
 async function record(opts) {
-  await db.run(
+  const exec = opts.tx || db;
+  await exec.run(
     `INSERT INTO audit_log
        (entity_type, entity_id, business_id, project_id, action_type, field_name,
         old_value, new_value, actor_user_id, actor_name, ip_address, user_agent)
@@ -45,7 +47,7 @@ async function record(opts) {
  * Diffs two flat objects field-by-field and records one audit row per
  * changed field. Only fields present in `fieldsToTrack` are compared.
  */
-async function recordDiff({ entityType, entityId, businessId, projectId, before, after, fieldsToTrack, actor, req }) {
+async function recordDiff({ entityType, entityId, businessId, projectId, before, after, fieldsToTrack, actor, req, tx }) {
   for (const field of fieldsToTrack) {
     const oldVal = before ? before[field] : undefined;
     const newVal = after ? after[field] : undefined;
@@ -61,6 +63,7 @@ async function recordDiff({ entityType, entityId, businessId, projectId, before,
         newValue: newVal,
         actor,
         req,
+        tx,
       });
     }
   }

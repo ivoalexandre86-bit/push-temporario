@@ -17,6 +17,8 @@ import Audit from './pages/Audit';
 import AdminUsers from './pages/AdminUsers';
 import CatalogLists from './pages/CatalogLists';
 import Settings from './pages/Settings';
+import Regions from './pages/Regions';
+import Carriers from './pages/Carriers';
 import NotFound from './pages/NotFound';
 import Forbidden from './pages/Forbidden';
 
@@ -59,6 +61,8 @@ export default function App() {
         <Route path="/horas" element={<Hours />} />
         <Route path="/relatorios" element={<Reports />} />
         <Route path="/configuracoes" element={<Settings />} />
+        <Route path="/regionais" element={<ProtectedRoute permission="logistics.view"><Regions /></ProtectedRoute>} />
+        <Route path="/transportadores" element={<ProtectedRoute permission="logistics.view"><Carriers /></ProtectedRoute>} />
         <Route path="/auditoria" element={<ProtectedRoute permission="audit.view"><Audit /></ProtectedRoute>} />
         <Route path="/listas" element={<ProtectedRoute permission="areas.manage"><CatalogLists /></ProtectedRoute>} />
         <Route path="/admin/usuarios" element={<ProtectedRoute permission="users.manage"><AdminUsers /></ProtectedRoute>} />

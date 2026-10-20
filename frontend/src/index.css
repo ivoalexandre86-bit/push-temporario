@@ -279,3 +279,11 @@ html.dark .recharts-tooltip-label { color: #e5e7eb; }
 .dg td.dg-editable:focus-visible { outline: 2px solid #3b82f6; outline-offset: -2px; }
 .dg td.dg-editing { color-scheme: dark; vertical-align: top; padding-top: 0.35rem; padding-bottom: 0.35rem; }
 .dg td.dg-editing .dg-input { border-color: #3b82f6; }
+
+/* Cadastros de logística: ações dos cards no celular (fora do .dg) */
+.logistics-card-actions .dg-chevron {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 2rem; height: 2rem; border-radius: 0.375rem; color: var(--color-text-muted);
+  border: 1px solid var(--color-border);
+}
+.dg thead tr + tr th { text-transform: none; letter-spacing: normal; }

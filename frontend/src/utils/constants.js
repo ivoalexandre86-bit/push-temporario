@@ -42,6 +42,9 @@ export const PERMISSIONS = {
   AUDIT_VIEW: 'audit.view',
   REPORTS_EXPORT: 'reports.export',
   DASHBOARD_VIEW: 'dashboard.view',
+  LOGISTICS_VIEW: 'logistics.view',
+  LOGISTICS_MANAGE: 'logistics.manage',
+  LOGISTICS_IMPORT: 'logistics.import',
 };
 
 export const ROLE_LABELS = {

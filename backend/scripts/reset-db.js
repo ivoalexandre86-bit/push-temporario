@@ -17,6 +17,7 @@ require('dotenv').config();
 const db = require('../src/db/connection');
 
 const TABLES = [
+  'logistics_import_batches', 'carriers', 'branches', 'region_contacts', 'regions',
   'audit_log', 'import_batches', 'attachments', 'comments', 'time_entries',
   'saved_views', 'actions', 'people', 'user_area_scope', 'user_project_scope',
   'areas', 'projects', 'sessions', 'password_reset_tokens', 'users',

@@ -11,6 +11,8 @@ const NAV_ITEMS = [
   { to: '/projetos', label: 'Projetos', icon: '🗂️' },
   { to: '/horas', label: 'Horas', icon: '⏱️' },
   { to: '/relatorios', label: 'Relatórios', icon: '📈' },
+  { to: '/regionais', label: 'Regionais', icon: '🗺️', permission: PERMISSIONS.LOGISTICS_VIEW },
+  { to: '/transportadores', label: 'Transportadores', icon: '🚚', permission: PERMISSIONS.LOGISTICS_VIEW },
   { to: '/listas', label: 'Listas', icon: '📝', permission: PERMISSIONS.AREAS_MANAGE },
   { to: '/auditoria', label: 'Auditoria', icon: '🛡️', permission: PERMISSIONS.AUDIT_VIEW },
   { to: '/admin/usuarios', label: 'Usuários', icon: '👤', permission: PERMISSIONS.USERS_MANAGE },
