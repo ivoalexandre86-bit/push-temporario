@@ -99,6 +99,29 @@ function isValidEmail(str) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(str);
 }
 
+/** Person-name fields (contacts), as opposed to unit/carrier names. */
+const PERSON_FIELD_EXCLUDE = new Set(['branchName', 'carrierName']);
+function isPersonField(field) {
+  return (field.key === 'name' || /Name$/.test(field.key)) && !PERSON_FIELD_EXCLUDE.has(field.key);
+}
+
+/**
+ * Removes e-mail-client leftovers from a person's name, as in the
+ * spreadsheet: "Fulano de Tal <>" or "Fulano de Tal <fulano@empresa.com>".
+ * Returns { value, email (if one was inside <...>), changed }.
+ */
+function cleanPersonName(value) {
+  const str = cleanText(value);
+  if (!str) return { value: str, email: null, changed: false };
+  let email = null;
+  const cleaned = str.replace(/\s*<([^<>]*)>\s*/g, (m, inner) => {
+    const candidate = inner.trim();
+    if (!email && isValidEmail(candidate)) email = candidate;
+    return ' ';
+  }).replace(/\s{2,}/g, ' ').trim();
+  return { value: cleaned || null, email, changed: cleaned !== str };
+}
+
 const regionKey = (name) => normalizeKey(name);
 
 /** Duplicate key of a branch: CNPJ + branch code; falls back to the name when there is no CNPJ. */
@@ -126,6 +149,8 @@ module.exports = {
   formatCnpj,
   normalizeZip,
   isValidEmail,
+  isPersonField,
+  cleanPersonName,
   regionKey,
   branchKey,
   carrierKey,

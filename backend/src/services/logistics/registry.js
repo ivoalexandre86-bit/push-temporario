@@ -68,6 +68,7 @@ function cleanValues(targetKey, body) {
     if (!(f.key in body)) continue;
     let v = N.cleanText(body[f.key]);
     if (v !== null) {
+      if (N.isPersonField(f)) v = N.cleanPersonName(v).value;
       if (f.kind === 'uf') v = v.toUpperCase();
       if (f.kind === 'cnpj') {
         const d = N.digitsOnly(v);

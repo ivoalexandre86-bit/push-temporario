@@ -205,6 +205,14 @@ function convertValue(field, raw, options, warnings) {
     warnings.placeholders.push(field.label);
     return null;
   }
+  if (N.isPersonField(field)) {
+    const cleaned = N.cleanPersonName(value);
+    if (cleaned.changed) {
+      warnings.list.push(`${field.label}: "${value}" ajustado automaticamente para "${cleaned.value}".`);
+      if (cleaned.email) warnings.foundEmails[field.key] = cleaned.email;
+    }
+    return cleaned.value;
+  }
   switch (field.kind) {
     case 'cnpj': {
       const digits = N.digitsOnly(value);
@@ -259,6 +267,43 @@ function rowKey(targetKey, v, regionName) {
 }
 
 /**
+ * Contatos das regionais: o mesmo e-mail em pessoas diferentes da mesma
+ * regional é erro de preenchimento (na planilha original, os programadores
+ * receberam o e-mail da responsável regional). Ajuste automático: o e-mail
+ * fica com quem apareceu primeiro (a linha do departamento "Regionais", na
+ * ordem da planilha, ou o contato já cadastrado) e é deixado vazio nos demais,
+ * com aviso para completar. O nome "Fulano <fulano@x>" também fornece o
+ * e-mail quando a coluna de e-mail estiver vazia.
+ */
+function fixRegionContactEmails(rows, existing) {
+  const owners = new Map(); // regionKey|email -> { name, department }
+  for (const c of existing.byKey.values()) {
+    if (c.email && c.region_id) {
+      const region = [...existing.regionByKey.values()].find((r) => r.id === c.region_id);
+      if (region) owners.set(`${region.dedupe_key}|${c.email.toLowerCase()}`, { name: c.name, department: c.department, key: c.dedupe_key });
+    }
+  }
+  for (const row of rows) {
+    if (row.status === 'REJECTED' || row.status === 'DUPLICATE' || !row.values.department) continue;
+    if (!row.values.email && row._foundEmails?.name) {
+      row.values.email = row._foundEmails.name;
+      row.warnings.push(`E-mail "${row.values.email}" aproveitado do campo de nome.`);
+    }
+    const email = row.values.email;
+    if (!email) continue;
+    const k = `${N.regionKey(row.regionName)}|${email.toLowerCase()}`;
+    const owner = owners.get(k);
+    if (!owner) {
+      owners.set(k, { name: row.values.name, department: row.values.department, key: row.key });
+      continue;
+    }
+    if (owner.key === row.key || N.normalizeKey(owner.name) === N.normalizeKey(row.values.name)) continue;
+    row.values.email = null;
+    row.warnings.push(`E-mail "${email}" é o mesmo de ${owner.name || 'outro contato'} (${owner.department}); deixado vazio automaticamente — informe o e-mail correto deste contato.`);
+  }
+}
+
+/**
  * Builds the full import plan. Pure apart from reading the current DB state.
  * Every row ends in exactly one status:
  *   INSERT, UPDATE, UNCHANGED, SKIPPED_EXISTS, DUPLICATE (merged/ignored), REJECTED
@@ -278,7 +323,7 @@ async function buildPlan({ db, buffer, sheetName, targetKey, mapping: rawMapping
   const rows = [];
 
   for (const src of sheet.rows) {
-    const warnings = { list: [], placeholders: [] };
+    const warnings = { list: [], placeholders: [], foundEmails: {} };
     const errors = [];
     const values = {};
     for (const f of fields) {
@@ -327,6 +372,7 @@ async function buildPlan({ db, buffer, sheetName, targetKey, mapping: rawMapping
       errors,
       warnings: warnings.list,
       duplicateOf: null,
+      _foundEmails: warnings.foundEmails,
       label: values.branchName || values.carrierName || values.name || regionName || null,
     };
 
@@ -365,6 +411,8 @@ async function buildPlan({ db, buffer, sheetName, targetKey, mapping: rawMapping
     firstByKey.set(row.key, row);
     rows.push(row);
   }
+
+  if (targetKey === 'REGIONS') fixRegionContactEmails(rows, existing);
 
   // Resolve status of each first occurrence against the database (after merges).
   for (const row of rows) {

@@ -43,9 +43,10 @@ async function buildWorkbook() {
 
   const regions = wb.addWorksheet('REGIONAIS');
   regions.addRow(REGION_HEADERS);
-  regions.addRow(['Regionais', 'Sul', 'Rita Regional', 'rita@exemplo.com.br', null, null, null]);
-  regions.addRow(['Programador', 'Sul', 'Paulo Programador', 'paulo@exemplo.com.br', null, null, null]);
-  regions.addRow(['Regionais', 'Centro', 'Clara Centro', 'clara@exemplo.com.br', null, null, null]);
+  // As in the real sheet: "<>" after the name, and the scheduler got the regional's e-mail
+  regions.addRow(['Regionais', 'Sul', 'Rita Regional <>', 'rita@exemplo.com.br', null, null, null]);
+  regions.addRow(['Programador', 'Sul', 'Paulo Programador', 'rita@exemplo.com.br', null, null, null]);
+  regions.addRow(['Regionais', 'Centro', 'Clara Centro <clara@exemplo.com.br>', null, null, null, null]);
 
   return Buffer.from(await wb.xlsx.writeBuffer());
 }
@@ -129,6 +130,21 @@ describe('Importação: regionais, filiais e transportadores', () => {
     const regions = await get('/regions');
     const sul = regions.body.items.find((r) => r.name === 'Sul');
     expect(sul.contacts.map((c) => c.department).sort()).toEqual(['Programador', 'Regionais']);
+  });
+
+  it('ajusta automaticamente nomes com "<>" e e-mail repetido entre pessoas da mesma regional', async () => {
+    const regions = (await get('/regions')).body.items;
+    const sul = regions.find((r) => r.name === 'Sul');
+    const rita = sul.contacts.find((c) => c.department === 'Regionais');
+    const paulo = sul.contacts.find((c) => c.department === 'Programador');
+    expect(rita).toMatchObject({ name: 'Rita Regional', email: 'rita@exemplo.com.br' });
+    expect(paulo).toMatchObject({ name: 'Paulo Programador', email: null });
+    const clara = regions.find((r) => r.name === 'Centro').contacts[0];
+    expect(clara).toMatchObject({ name: 'Clara Centro', email: 'clara@exemplo.com.br' });
+    const history = (await get('/import/history')).body.items.find((b) => b.target === 'REGIONS');
+    const warnings = history.summary.warnings.flatMap((w) => w.warnings).join(' ');
+    expect(warnings).toMatch(/ajustado automaticamente/);
+    expect(warnings).toMatch(/mesmo de Rita Regional \(Regionais\); deixado vazio/);
   });
 
   it('pré-visualiza filiais: duplicada mesclada, regional inexistente rejeitada, avisos de CNPJ/CEP/UF/NA', async () => {
@@ -232,6 +248,14 @@ describe('Cadastro manual', () => {
     expect(patch.status).toBe(200);
     const del = await withAuth(request(app).delete(`/api/logistics/regions/${created.body.id}`), adminCookie);
     expect(del.status).toBe(204);
+  });
+
+  it('limpa "<>" do nome também no cadastro manual de contato', async () => {
+    const centro = (await get('/regions')).body.items.find((r) => r.name === 'Centro');
+    const res = await post(`/regions/${centro.id}/contacts`).send({ department: 'Programador', name: 'Marcos Lima <>' });
+    expect(res.status).toBe(201);
+    const detail = await get(`/regions/${centro.id}`);
+    expect(detail.body.contacts.find((c) => c.department === 'Programador').name).toBe('Marcos Lima');
   });
 
   it('valida campos na criação de filial e impede duplicidade por CNPJ + código', async () => {

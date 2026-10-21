@@ -274,6 +274,13 @@ Nome da Filial (filial); Transportadora e nome ou CNPJ da unidade
 (transportador); Departamento (contato). Os demais são opcionais. CNPJ (dígito
 verificador), UF, CEP e e-mail são validados na tela e na API quando
 digitados; na importação, valores fora do padrão **são mantidos e sinalizados**.
+Ajustes automáticos (sempre com aviso na pré-visualização e no histórico):
+restos de cliente de e-mail no nome de pessoas ("Fulano <>", "Fulano
+<fulano@x>") são removidos — o e-mail entre `<>` preenche a coluna de e-mail
+se ela estiver vazia; e, nos contatos de uma regional, um e-mail repetido em
+pessoas diferentes fica só com o primeiro contato (o departamento
+"Regionais", na ordem da planilha) e é deixado vazio nos demais para ser
+completado.
 
 **Importação inteligente** (`Importar Excel` nas duas telas; API em
 `/api/logistics/import/*`): seleção do `.xlsx` → identificação das abas e
