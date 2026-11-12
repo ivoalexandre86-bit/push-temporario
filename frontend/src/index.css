@@ -118,6 +118,16 @@ a { color: inherit; }
 /* Colored left border per row (set --row-accent on the <tr>) */
 .dg tbody td:first-child { box-shadow: inset 3px 0 0 var(--row-accent, transparent); }
 .dg td.num { font-variant-numeric: tabular-nums; }
+/* Totals row at the bottom of the Ações grid */
+.dg tfoot tr.dg-total { background: var(--dg-head); }
+.dg tfoot td {
+  padding: 0.65rem 0.75rem;
+  border-top: 2px solid #334155;
+  font-weight: 700;
+  color: var(--dg-text);
+  white-space: nowrap;
+}
+.dg tfoot td.danger { color: #f87171; }
 .dg .muted { color: var(--dg-muted); }
 .dg .danger { color: #f87171; font-weight: 600; }
 .dg .warn { color: #fbbf24; font-weight: 500; }

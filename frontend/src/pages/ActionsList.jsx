@@ -13,7 +13,7 @@ import KpiCard from '../components/KpiCard';
 import AttachmentsMenu from '../components/AttachmentsMenu';
 import BulkActionBar from '../components/BulkActionBar';
 import { Loading, ErrorState, EmptyState } from '../components/Loading';
-import { formatDate } from '../utils/format';
+import { formatDate, formatHours } from '../utils/format';
 import { FLAG_LABELS, PERMISSIONS, STATUSES, STATUS_META, GRID_STATUS_COLORS } from '../utils/constants';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
@@ -103,6 +103,23 @@ export default function ActionsList() {
       const updated = await api.patch(`/actions/${item.id}`, patch);
       setData((d) => (d ? { ...d, items: d.items.map((it) => (it.uuid === item.uuid ? { ...it, ...updated } : it)) } : d));
       toast.success(`Ação #${item.id} atualizada.`);
+      quietReload.current = true;
+      setReloadKey((k) => k + 1);
+      return true;
+    } catch (err) {
+      toast.error(err.message);
+      return false;
+    }
+  };
+
+  // Horas reais typed in the grid: the backend stores the difference as one
+  // approved adjustment entry (Admin / Gerente de Projeto only).
+  const canEditActualHours = ['ADMIN', 'PROJECT_MANAGER'].includes(user?.role);
+  const saveActualHoursInline = async (item, actualHours) => {
+    try {
+      const updated = await api.put(`/actions/${item.id}/actual-hours`, { actualHours });
+      setData((d) => (d ? { ...d, items: d.items.map((it) => (it.uuid === item.uuid ? { ...it, ...updated } : it)) } : d));
+      toast.success(`Horas reais da ação #${item.id} atualizadas.`);
       quietReload.current = true;
       setReloadKey((k) => k + 1);
       return true;
@@ -280,6 +297,7 @@ export default function ActionsList() {
                         show={(key) => visibleCols.includes(key)}
                         canEdit={canEditRow(item)}
                         save={(patch) => saveInline(item, patch)}
+                        saveActualHours={canEditActualHours ? (h) => saveActualHoursInline(item, h) : undefined}
                         catalogs={catalogs}
                         listsFor={listsFor}
                       />
@@ -310,6 +328,11 @@ export default function ActionsList() {
                     </Fragment>
                   ))}
                 </tbody>
+                {data.hoursTotals && (
+                  <tfoot>
+                    <GridTotalsRow cols={cols} checkboxColumn={canBulk} totals={data.hoursTotals} count={data.total} />
+                  </tfoot>
+                )}
               </table>
             </div>
           </div>
@@ -360,6 +383,13 @@ export default function ActionsList() {
             ))}
           </div>
 
+          {data.hoursTotals && (
+            <div className="md:hidden mt-3 bg-white border border-[var(--color-border)] rounded-xl p-3 text-sm flex justify-between gap-2">
+              <span className="font-semibold text-gray-900">Total ({data.total})</span>
+              <span className="text-gray-700 tabular-nums">Plan. {formatHours(data.hoursTotals.planned)} · Reais {formatHours(data.hoursTotals.actual)}</span>
+            </div>
+          )}
+
           <div className="flex flex-wrap items-center justify-between gap-2 mt-4">
             <p className="text-sm text-gray-500">
               {data.total} ações · página {data.page} de {data.totalPages || 1}
@@ -378,6 +408,33 @@ export default function ActionsList() {
       {backToProjectId && <ProjectListsModal open={showLists} projectId={backToProjectId} onClose={() => setShowLists(false)} />}
       <ActionFormModal open={showNew} onClose={() => setShowNew(false)} onCreated={() => { setPage(1); setReloadKey((k) => k + 1); }} defaultProjectId={defaultProjectId} />
     </div>
+  );
+}
+
+/**
+ * Footer of the Ações grid: totals of horas planejadas / reais / variação for
+ * every action matching the filters (all pages), aligned under their columns.
+ */
+function GridTotalsRow({ cols, checkboxColumn, totals, count }) {
+  const values = { plannedHours: totals.planned, actualHours: totals.actual, varianceHours: totals.variance };
+  const label = "Total";
+  return (
+    <tr className="dg-total">
+      {checkboxColumn && <td />}
+      {cols.map((c, i) => {
+        if (c.key in values) {
+          const v = values[c.key];
+          return (
+            <td key={c.key} className={`num tabular-nums ${c.key === 'varianceHours' && v > 0 ? 'danger' : ''}`}>
+              {formatHours(v)}
+            </td>
+          );
+        }
+        if (i === 0) return <td key={c.key} className="whitespace-nowrap">{label}</td>;
+        return <td key={c.key} />;
+      })}
+      <td />
+    </tr>
   );
 }
 

@@ -92,6 +92,19 @@ router.get('/', async (req, res, next) => {
     const statusCounts = Object.fromEntries(VALID_STATUSES.map((st) => [st, 0]));
     for (const r of statusRows) statusCounts[r.status] = Number(r.n);
 
+    // Footer totals of the grid: every action that matches the filters, not
+    // only the current page (same rules as the action_hours view).
+    const totalsRow = await db.get(`
+      SELECT COALESCE(SUM(ah.planned_hours_total), 0) AS planned, COALESCE(SUM(ah.actual_hours_total), 0) AS actual
+      ${BASE_FROM} WHERE ${where}
+    `, ...params);
+    const roundHours = (n) => Math.round(Number(n) * 100) / 100;
+    const hoursTotals = {
+      planned: roundHours(totalsRow.planned),
+      actual: roundHours(totalsRow.actual),
+      variance: roundHours(Number(totalsRow.actual) - Number(totalsRow.planned)),
+    };
+
     const sortCol = sortBy === 'project_name' ? 'p.name' : sortBy === 'area_name' ? 'ar.name' : `a.${sortBy}`;
     const rows = await db.all(`
       SELECT a.*, p.name AS project_name, ar.name AS area_name, au.name AS assignee_name,
@@ -107,6 +120,7 @@ router.get('/', async (req, res, next) => {
       items: rows.map(shapeAction),
       page, pageSize, total, totalPages: Math.ceil(total / pageSize),
       statusCounts,
+      hoursTotals,
       filters: filtersEcho,
     });
   } catch (err) { next(err); }
@@ -383,6 +397,66 @@ router.patch('/:id', async (req, res, next) => {
     if (body.statusChangeReason) {
       await auditService.record({ entityType: 'ACTION', entityId: before.uuid, businessId: before.business_id, projectId: before.project_id, actionType: 'STATUS_CHANGE_REASON', newValue: body.statusChangeReason, actor: req.user, req });
     }
+
+    const row = await loadActionOr404(before.uuid);
+    res.json(shapeAction(row));
+  } catch (err) { next(err); }
+});
+
+// ------------------------------------------------------------------------
+// Horas reais direto no grid: grava o TOTAL desejado. A diferença para a soma
+// dos lançamentos reais aprovados fica num único lançamento de ajuste da ação
+// (criado ou atualizado aqui), aprovado na hora. Só Admin / Gerente de Projeto,
+// para o total na tela ser sempre o que foi digitado (o lançamento de um
+// Colaborador ficaria pendente de aprovação).
+// ------------------------------------------------------------------------
+const GRID_ADJUSTMENT_NOTE = 'Ajuste de horas reais pelo grid de ações';
+const actualHoursSchema = z.object({
+  actualHours: z.number({ invalid_type_error: 'Informe as horas reais.' }).nonnegative('As horas reais não podem ser negativas.').max(100000),
+});
+
+router.put('/:id/actual-hours', requirePermission(PERMISSIONS.HOURS_EDIT), async (req, res, next) => {
+  try {
+    const before = await loadActionOr404(req.params.id);
+    if (!before || before.deleted_at) throw new AppError(404, 'NOT_FOUND', 'Ação não encontrada.');
+    if (!(await canAccessProject(req.user, before.project_id))) throw new AppError(403, 'FORBIDDEN', 'Você não tem acesso a esta ação.');
+    if (!['ADMIN', 'PROJECT_MANAGER'].includes(req.user.role_key)) {
+      throw new AppError(403, 'FORBIDDEN', 'Só administradores e gerentes de projeto alteram as horas reais pelo grid. Lance as horas na ação.');
+    }
+    const { actualHours } = actualHoursSchema.parse(req.body);
+    const target = Math.round(actualHours * 100) / 100;
+    const previous = Number(before.actual_hours_total) || 0;
+
+    await db.transaction(async (tx) => {
+      const adjustment = await tx.get(
+        `SELECT * FROM time_entries WHERE action_uuid = ? AND type = 'ACTUAL' AND note = ? ORDER BY id LIMIT 1`,
+        before.uuid, GRID_ADJUSTMENT_NOTE
+      );
+      const others = await tx.get(
+        `SELECT COALESCE(SUM(hours), 0) AS total FROM time_entries
+         WHERE action_uuid = ? AND type = 'ACTUAL' AND approval_status = 'APPROVED' AND id <> ?`,
+        before.uuid, adjustment ? adjustment.id : -1
+      );
+      const hours = Math.round((target - Number(others.total)) * 100) / 100;
+      const today = nowISO().slice(0, 10);
+      if (adjustment) {
+        await tx.run(
+          `UPDATE time_entries SET hours = ?, approval_status = 'APPROVED', entry_date = ?, user_id = ?, updated_at = ? WHERE id = ?`,
+          hours, today, req.user.id, nowISO(), adjustment.id
+        );
+      } else {
+        await tx.run(`
+          INSERT INTO time_entries (action_uuid, user_id, entry_date, hours, type, note, approval_status, created_by)
+          VALUES (?, ?, ?, ?, 'ACTUAL', ?, 'APPROVED', ?)
+        `, before.uuid, req.user.id, today, hours, GRID_ADJUSTMENT_NOTE, req.user.id);
+      }
+      await tx.run('UPDATE actions SET updated_by = ?, updated_at = ? WHERE uuid = ?', req.user.id, nowISO(), before.uuid);
+    });
+
+    await auditService.record({
+      entityType: 'ACTION', entityId: before.uuid, businessId: before.business_id, projectId: before.project_id,
+      actionType: 'UPDATE', fieldName: 'actual_hours', oldValue: previous, newValue: target, actor: req.user, req,
+    });
 
     const row = await loadActionOr404(before.uuid);
     res.json(shapeAction(row));

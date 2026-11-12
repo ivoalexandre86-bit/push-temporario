@@ -171,7 +171,7 @@ export function ActionStatusPill({ status }) {
  * The editable cells of one grid row, in column order. `save(patch)` sends the
  * change and resolves to false when it failed (the editor then stays open).
  */
-export function ActionRowCells({ item, show, canEdit, save, catalogs, listsFor }) {
+export function ActionRowCells({ item, show, canEdit, save, saveActualHours, catalogs, listsFor }) {
   const { projects, areas, people } = catalogs;
   const lists = listsFor(item.project.id);
   // The Prazo/Fim column shows the due date, or the completion date when there
@@ -261,7 +261,17 @@ export function ActionRowCells({ item, show, canEdit, save, catalogs, listsFor }
           {formatHours(item.plannedHours)}
         </EditableCell>
       )}
-      {show('actualHours') && <td className="num" title="Soma das horas lançadas na ação (abra a ação para lançar)">{formatHours(item.actualHours)}</td>}
+      {show('actualHours') && (
+        <EditableCell canEdit={canEdit && !!saveActualHours} className="num" minWidth="6rem"
+          title="Total de horas reais da ação. A diferença vira um lançamento de ajuste aprovado."
+          editor={(done) => (
+            <FieldEditor type="number" min="0" step="0.5" initial={String(item.actualHours ?? 0)} done={done}
+              className="text-right" aria-label="Horas reais"
+              onCommit={(v) => (v === '' || Number(v) < 0 ? false : saveActualHours(Number(v)))} />
+          )}>
+          {formatHours(item.actualHours)}
+        </EditableCell>
+      )}
       {show('varianceHours') && <td className={`num ${item.varianceHours > 0 ? 'danger' : ''}`} title="Calculada: horas reais − planejadas">{formatHours(item.varianceHours)}</td>}
       {show('startDate') && (
         <EditableCell canEdit={canEdit} className="whitespace-nowrap tabular-nums" minWidth="9rem" editor={(done) => (
