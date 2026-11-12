@@ -45,6 +45,7 @@ export const AUDIT_FIELD_LABELS = {
   assignee_user_id: 'Responsável (usuário)', assigneeUserId: 'Responsável (usuário)',
   unassigned: 'Sem responsável',
   planned_hours: 'Horas planejadas', plannedHours: 'Horas planejadas',
+  actual_hours: 'Horas reais', actualHours: 'Horas reais',
   start_date: 'Data de início', startDate: 'Data de início',
   due_date: 'Prazo', dueDate: 'Prazo',
   completion_date: 'Data de conclusão', completionDate: 'Data de conclusão',
